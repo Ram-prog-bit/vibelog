@@ -1,26 +1,61 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@theme {
+  /* ink-on-paper instrument palette */
+  --color-paper: #f7f7f5;
+  --color-surface: #ffffff;
+  --color-ink: #1a1a1c;
+  --color-ink-2: #55555c;
+  --color-ink-3: #8b8b92;
+  --color-line: #e6e6e2;
+  --color-line-2: #d8d8d3;
+  --color-wash: #efefec;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  /* the single accent: a recording light */
+  --color-rec: #d9382c;
+  --color-rec-soft: #fbeae8;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  /* status, used only at dot/badge scale */
+  --color-ok: #2e7d54;
+  --color-ok-soft: #e7f2ec;
+  --color-warn: #a06a0a;
+  --color-warn-soft: #f7efdd;
+
+  --font-sans: var(--font-sans), system-ui, sans-serif;
+  --font-serif: var(--font-serif), Georgia, serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
+
+  --animate-blink: blink 1.6s steps(1) infinite;
+
+  @keyframes blink {
+    50% {
+      opacity: 0.25;
+    }
   }
 }
 
+::selection {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01";
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
