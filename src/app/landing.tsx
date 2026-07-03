@@ -7,6 +7,7 @@ import { SESSIONS, type SessionEvent } from "@/lib/data";
 import { fmtUsd, fmtTokens } from "@/lib/format";
 import { Tape } from "@/components/tape";
 import { BarChart } from "@/components/charts";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { DAILY } from "@/lib/data";
 
 // ---- hand-authored tapes for the hero and the "shapes" section ----
@@ -215,10 +216,11 @@ export function Landing() {
           </span>
           <span className="text-[15px] font-semibold tracking-tight">VibeLog</span>
         </Link>
-        <div className="flex items-center gap-6 text-[13px]">
+        <div className="flex items-center gap-4 text-[13px]">
           <Link href="/docs" className="text-ink-2 hover:text-ink">
             Docs
           </Link>
+          <ThemeToggle />
           <Link
             href="/mission"
             className="rounded-md bg-ink px-3.5 py-1.5 font-medium text-paper transition-opacity hover:opacity-85"

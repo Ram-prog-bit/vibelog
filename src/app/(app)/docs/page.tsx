@@ -4,7 +4,7 @@ export const metadata = { title: "Docs" };
 
 function CodeBlock({ children }: { children: string }) {
   return (
-    <pre className="overflow-x-auto rounded-lg border border-line bg-ink p-4 font-mono text-[12.5px] leading-relaxed text-paper">
+    <pre className="overflow-x-auto rounded-lg border border-line bg-code-bg p-4 font-mono text-[12.5px] leading-relaxed text-code-fg">
       {children}
     </pre>
   );

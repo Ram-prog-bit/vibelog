@@ -10,6 +10,7 @@ import {
   BookOpen,
 } from "lucide-react";
 import { LIVE } from "@/lib/data";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const NAV = [
   { href: "/mission", label: "Mission control", icon: Activity },
@@ -23,12 +24,15 @@ export function Sidebar() {
   const pathname = usePathname();
   return (
     <aside className="sticky top-0 flex h-screen w-[218px] shrink-0 flex-col border-r border-line bg-surface max-md:hidden">
-      <Link href="/" className="flex items-center gap-2 px-5 pt-5 pb-6">
-        <span className="grid size-5 place-items-center rounded-full border-[1.5px] border-ink">
-          <span className="size-1.5 rounded-full bg-rec" />
-        </span>
-        <span className="text-[15px] font-semibold tracking-tight">VibeLog</span>
-      </Link>
+      <div className="flex items-center justify-between gap-2 px-5 pt-5 pb-6">
+        <Link href="/" className="flex items-center gap-2">
+          <span className="grid size-5 place-items-center rounded-full border-[1.5px] border-ink">
+            <span className="size-1.5 rounded-full bg-rec" />
+          </span>
+          <span className="text-[15px] font-semibold tracking-tight">VibeLog</span>
+        </Link>
+        <ThemeToggle />
+      </div>
       <nav className="flex flex-col gap-0.5 px-3">
         {NAV.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
@@ -69,27 +73,30 @@ export function Sidebar() {
 export function MobileNav() {
   const pathname = usePathname();
   return (
-    <nav className="sticky top-0 z-20 flex items-center gap-1 overflow-x-auto border-b border-line bg-surface px-3 py-2 md:hidden">
-      <Link href="/" className="mr-2 flex shrink-0 items-center gap-1.5 pl-1">
-        <span className="grid size-4 place-items-center rounded-full border-[1.5px] border-ink">
-          <span className="size-1 rounded-full bg-rec" />
-        </span>
-        <span className="text-sm font-semibold tracking-tight">VibeLog</span>
-      </Link>
-      {NAV.map(({ href, label }) => {
-        const active = pathname === href || pathname.startsWith(href + "/");
-        return (
-          <Link
-            key={href}
-            href={href}
-            className={`shrink-0 rounded-md px-2.5 py-1.5 text-xs ${
-              active ? "bg-wash font-medium text-ink" : "text-ink-2"
-            }`}
-          >
-            {label}
-          </Link>
-        );
-      })}
+    <nav className="sticky top-0 z-20 flex items-center gap-1 border-b border-line bg-surface px-3 py-2 md:hidden">
+      <div className="flex flex-1 items-center gap-1 overflow-x-auto">
+        <Link href="/" className="mr-2 flex shrink-0 items-center gap-1.5 pl-1">
+          <span className="grid size-4 place-items-center rounded-full border-[1.5px] border-ink">
+            <span className="size-1 rounded-full bg-rec" />
+          </span>
+          <span className="text-sm font-semibold tracking-tight">VibeLog</span>
+        </Link>
+        {NAV.map(({ href, label }) => {
+          const active = pathname === href || pathname.startsWith(href + "/");
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={`shrink-0 rounded-md px-2.5 py-1.5 text-xs ${
+                active ? "bg-wash font-medium text-ink" : "text-ink-2"
+              }`}
+            >
+              {label}
+            </Link>
+          );
+        })}
+      </div>
+      <ThemeToggle className="ml-2" />
     </nav>
   );
 }

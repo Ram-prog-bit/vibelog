@@ -1,7 +1,9 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 @theme {
-  /* ink-on-paper instrument palette */
+  /* ink-on-paper instrument palette — light (default) values */
   --color-paper: #f7f7f5;
   --color-surface: #ffffff;
   --color-ink: #1a1a1c;
@@ -21,6 +23,10 @@
   --color-warn: #a06a0a;
   --color-warn-soft: #f7efdd;
 
+  /* code/terminal panels stay dark in both themes, recessed relative to the page */
+  --color-code-bg: #1a1a1c;
+  --color-code-fg: #f7f7f5;
+
   --font-sans: var(--font-sans), system-ui, sans-serif;
   --font-serif: var(--font-serif), Georgia, serif;
   --font-mono: var(--font-mono), ui-monospace, monospace;
@@ -32,6 +38,71 @@
       opacity: 0.25;
     }
   }
+}
+
+[data-theme="dark"] {
+  --color-paper: #101012;
+  --color-surface: #18181b;
+  --color-ink: #f0f0ee;
+  --color-ink-2: #a6a6ac;
+  --color-ink-3: #6c6c73;
+  --color-line: #29292d;
+  --color-line-2: #38383e;
+  --color-wash: #202024;
+
+  --color-rec: #ff5a4a;
+  --color-rec-soft: #2a1613;
+
+  --color-ok: #57c98a;
+  --color-ok-soft: #142e21;
+  --color-warn: #e2a94f;
+  --color-warn-soft: #2e2311;
+
+  --color-code-bg: #08090a;
+  --color-code-fg: #ececeb;
+}
+
+/* live tape: each event line draws itself in from the baseline (pathLength=1
+   normalises every bar so one keyframe fits all heights) */
+@keyframes tape-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+
+/* live write-head: a recording ring that expands and fades, over and over */
+@keyframes playhead-pulse {
+  0% {
+    r: 3.5;
+    opacity: 0.5;
+  }
+  70%,
+  100% {
+    r: 9;
+    opacity: 0;
+  }
+}
+
+/* tape-reel: three dashes, emphasis travelling across them like tape being
+   fed through a reel. Resting frame (0%) is fully visible, so reduced motion
+   freezes to three clean dashes. */
+@keyframes reel {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+  35% {
+    opacity: 0.25;
+    transform: scaleX(0.5);
+  }
+}
+
+html {
+  color-scheme: light;
+}
+[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 ::selection {
@@ -47,6 +118,19 @@ body {
 :focus-visible {
   outline: 2px solid var(--color-ink);
   outline-offset: 2px;
+}
+
+/* theme toggle transitions smoothly; anything with its own transition (buttons,
+   links) keeps its own faster timing since class selectors win over this one */
+*,
+*::before,
+*::after {
+  transition:
+    background-color 0.25s ease,
+    border-color 0.25s ease,
+    color 0.25s ease,
+    fill 0.25s ease,
+    stroke 0.25s ease;
 }
 
 @media (prefers-reduced-motion: reduce) {

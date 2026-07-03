@@ -28,6 +28,8 @@ export const metadata: Metadata = {
     "VibeLog is a local-first workspace for tracking every agent session: prompts, outputs, tool calls, cost, and performance. Your data never leaves your machine.",
 };
 
+const THEME_INIT_SCRIPT = `(function(){try{var k="vibelog-theme",s=localStorage.getItem(k),t=s==="light"||s==="dark"?s:(window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.setAttribute("data-theme",t);}catch(e){}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -36,8 +38,12 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${sans.variable} ${serif.variable} ${mono.variable} h-full antialiased`}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col bg-paper text-ink">{children}</body>
     </html>
   );

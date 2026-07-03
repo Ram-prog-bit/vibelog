@@ -21,6 +21,32 @@ export function StatusLabel({ status }: { status: SessionStatus }) {
   );
 }
 
+// Three dashes fed across like tape through a reel — our loading/thinking mark.
+// active=false leaves them at rest (three clean dashes) for historical rows.
+export function TapeReel({
+  active = true,
+  className = "",
+}: {
+  active?: boolean;
+  className?: string;
+}) {
+  return (
+    <span aria-hidden className={`inline-flex items-center gap-[3px] align-middle ${className}`}>
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="block h-px w-[7px] rounded-full bg-current"
+          style={
+            active
+              ? { animation: "reel 1.05s ease-in-out infinite", animationDelay: `${i * 0.14}s` }
+              : undefined
+          }
+        />
+      ))}
+    </span>
+  );
+}
+
 export function PageHeader({
   title,
   sub,

@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function NotFound() {
   return (
-    <div className="grid min-h-screen place-items-center px-6">
+    <div className="relative grid min-h-screen place-items-center px-6">
+      <ThemeToggle className="absolute top-6 right-6" />
       <div className="text-center">
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-3">404</p>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight">Nothing recorded here.</h1>

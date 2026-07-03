@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { sessionById, SESSIONS, NOW, type SessionEvent } from "@/lib/data";
 import { fmtUsd, fmtTokens, fmtDuration, offsetClock, timeAgo } from "@/lib/format";
-import { Card, Stat, StatusLabel } from "@/components/ui";
+import { Card, Stat, StatusLabel, TapeReel } from "@/components/ui";
 import { Tape } from "@/components/tape";
 
 export function generateStaticParams() {
@@ -15,7 +15,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: sessionById(id)?.title ?? "Session" };
 }
 
-function EventRow({ e }: { e: SessionEvent }) {
+function EventRow({ e, live }: { e: SessionEvent; live: boolean }) {
   const hasBody = e.detail && (e.kind === "prompt" || e.kind === "output" || e.kind === "error");
   return (
     <li className="relative pl-20">
@@ -48,7 +48,9 @@ function EventRow({ e }: { e: SessionEvent }) {
         <div className="flex items-baseline justify-between gap-3 py-0.5">
           <span className="font-mono text-[13px] text-ink-2">
             {e.kind === "thinking" ? (
-              <span className="italic text-ink-3">reasoning…</span>
+              <span className="inline-flex items-center gap-1.5 italic text-ink-3">
+                reasoning <TapeReel active={live} />
+              </span>
             ) : (
               e.label
             )}
@@ -116,7 +118,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
         ) : (
           <ol className="space-y-3">
             {s.events.map((e, i) => (
-              <EventRow key={i} e={e} />
+              <EventRow key={i} e={e} live={s.status === "live"} />
             ))}
           </ol>
         )}

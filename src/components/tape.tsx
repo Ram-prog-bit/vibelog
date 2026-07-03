@@ -91,7 +91,13 @@ export function Tape({
                   stroke={k.color}
                   strokeWidth={e.kind === "prompt" || e.kind === "error" ? 2.5 : 1.75}
                   strokeLinecap="round"
-                  strokeDasharray={e.kind === "error" ? "3 2.5" : undefined}
+                  pathLength={live ? 1 : undefined}
+                  strokeDasharray={live ? 1 : e.kind === "error" ? "3 2.5" : undefined}
+                  style={
+                    live
+                      ? { animation: `tape-draw 0.5s ease-out both`, animationDelay: `${(x / W) * 0.5}s` }
+                      : undefined
+                  }
                 />
                 <rect
                   x={x - 5}
@@ -115,6 +121,15 @@ export function Tape({
                 y2={8}
                 stroke="var(--color-rec)"
                 strokeWidth={1.5}
+              />
+              <circle
+                cx={W - 6}
+                cy={8}
+                r={3.5}
+                fill="none"
+                stroke="var(--color-rec)"
+                strokeWidth={1.5}
+                style={{ animation: "playhead-pulse 1.8s ease-out infinite" }}
               />
               <circle cx={W - 6} cy={8} r={3.5} fill="var(--color-rec)" className="animate-blink" />
             </g>

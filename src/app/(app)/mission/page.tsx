@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { SESSIONS, LIVE, DAILY, NOW } from "@/lib/data";
 import { fmtUsd, fmtTokens, fmtDuration, timeAgo } from "@/lib/format";
-import { PageHeader, Stat, Card, StatusLabel } from "@/components/ui";
+import { PageHeader, Stat, Card, StatusLabel, TapeReel } from "@/components/ui";
 import { Tape } from "@/components/tape";
 import { Sparkline } from "@/components/charts";
 
@@ -68,6 +68,14 @@ export default function MissionPage() {
                   className="mt-4"
                 />
                 <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 font-mono text-[11px] tabular-nums text-ink-2">
+                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-ink-3">
+                    <TapeReel />
+                    {s.events[s.events.length - 1]?.kind === "tool"
+                      ? "running tools"
+                      : s.events[s.events.length - 1]?.kind === "thinking"
+                        ? "reasoning"
+                        : "writing"}
+                  </span>
                   <span className="whitespace-nowrap">
                     {fmtDuration(Math.floor((NOW - s.startedAt) / 1000))} elapsed
                   </span>
