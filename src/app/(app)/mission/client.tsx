@@ -138,8 +138,19 @@ export function MissionClient() {
             </Link>
           ))}
           {live.length === 0 && (
-            <Card className="border-dashed p-8 text-sm text-ink-2">
-              Nothing on the air. Start an agent session and it shows up here within a second.
+            <Card className="flex flex-col items-start gap-3 border-dashed p-8">
+              <span className="text-ink-3">
+                <TapeReel active={false} />
+              </span>
+              <div>
+                <div className="text-sm font-medium">Nothing on the air</div>
+                <p className="mt-1 text-sm leading-relaxed text-ink-2">
+                  Start an agent session and it shows up here within a second. Not recording yet?
+                </p>
+              </div>
+              <code className="rounded-md bg-code-bg px-2.5 py-1.5 font-mono text-xs text-code-fg">
+                vibelog start
+              </code>
             </Card>
           )}
           {queued.map((s) => (

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Search, GitBranch, FolderGit2 } from "lucide-react";
 import { type Session, type SessionStatus } from "@/lib/data";
 import { useLive } from "@/lib/live";
-import { fmtUsd6, fmtTokens, fmtDuration, timeAgo } from "@/lib/format";
+import { fmtUsd, fmtUsd6, fmtTokens, fmtDuration, timeAgo } from "@/lib/format";
 import { PageHeader, Card, StatusLabel } from "@/components/ui";
 
 const FILTERS: { key: SessionStatus | "all"; label: string }[] = [
@@ -110,7 +110,9 @@ export function SessionsTable() {
     <div className="space-y-6">
       <PageHeader
         title="Sessions"
-        sub={`${sessions.length} recorded on this machine`}
+        sub={`${sessions.length} recorded on this machine · ${fmtUsd(
+          sessions.reduce((a, s) => a + s.costUsd, 0)
+        )} all time`}
         right={
           <label className="relative block">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3" />

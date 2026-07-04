@@ -65,7 +65,7 @@ export function Sidebar() {
           <span className="size-1.5 rounded-full bg-ok" />
           Local · ~/.vibelog
         </div>
-        <div className="mt-0.5 font-mono text-[11px] text-ink-3">142 MB · nothing synced</div>
+        <div className="mt-0.5 font-mono text-[11px] text-ink-3">nothing leaves this machine</div>
       </div>
     </aside>
   );

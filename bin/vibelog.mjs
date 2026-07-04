@@ -496,9 +496,9 @@ function parseTranscript(file, mtimeMs) {
     agent: "claude-code",
     model,
     status,
-    // transcript records the branch the session actually ran on; absent → the
-    // session didn't run in a git repo, so "no-branch" (matches the spec).
-    gitBranch: branch || "no-branch",
+    // transcript records the branch the session actually ran on; absent or a
+    // detached "HEAD" → not on a branch, so "no-branch" (matches the spec).
+    gitBranch: branch && branch !== "HEAD" ? branch : "no-branch",
     // ponytail: repo label = cwd basename (the repo root in the common case);
     // avoids a git spawn per session on every tick.
     gitRepo: cwd ? path.basename(cwd) : undefined,

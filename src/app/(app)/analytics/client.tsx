@@ -36,7 +36,7 @@ export function AnalyticsClient() {
         <Stat label="Total spend" value={fmtUsd(sum.totalSpend)} />
         <Stat label="Sessions" value={sum.totalSessions.toLocaleString("en-US")} />
         <Stat label="Avg cost / session" value={fmtUsd6(sum.avgCostUsd)} />
-        <Stat label="Tokens" value={fmtTokens(sum.totalTokens)} />
+        <Stat label="Tokens" value={fmtTokens(sum.totalTokens)} hint="in + out, cache reads included" />
         <Stat
           label="Failure rate"
           value={fmtPct(sum.failureRate)}
@@ -108,8 +108,8 @@ export function AnalyticsClient() {
               <p className="text-sm text-ink-2">No tool timings recorded yet.</p>
             )}
             <p className="mt-4 border-t border-line pt-3 text-xs text-ink-2">
-              Wall-clock time per tool call, log scale. Bash usually dominates because it runs your
-              test suite.
+              Wall-clock time per tool call, log scale. Bash usually dominates — it runs your test
+              suite, and it waits while you approve commands.
             </p>
           </Card>
         </div>

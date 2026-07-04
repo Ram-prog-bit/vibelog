@@ -186,9 +186,13 @@ export function LatencyRanges({
 }: {
   rows: { tool: string; p50: number; p95: number; calls: number }[];
 }) {
-  const min = 0.1;
-  const max = 20;
-  const x = (v: number) => (Math.log(v / min) / Math.log(max / min)) * 100;
+  // log scale sized to the data — real p95s range from 0.04s (Read) to minutes
+  // (Bash waiting on a test suite), so fixed bounds clip both ends
+  const min = 0.02;
+  const max = Math.max(20, ...rows.map((r) => r.p95)) * 1.15;
+  const x = (v: number) =>
+    Math.min(100, Math.max(0, (Math.log(Math.max(v, min) / min) / Math.log(max / min)) * 100));
+  const ticks = [0.1, 1, 10, 100].filter((v) => v < max * 0.7);
   return (
     <div className="space-y-3">
       {rows.map((r) => (
@@ -213,7 +217,7 @@ export function LatencyRanges({
       <div className="grid grid-cols-[72px_1fr_88px] gap-3">
         <div />
         <div className="relative h-4 font-mono text-[10px] text-ink-3">
-          {[0.1, 1, 10].map((v) => (
+          {ticks.map((v) => (
             <span key={v} className="absolute" style={{ left: `${x(v)}%` }}>
               {v}s
             </span>

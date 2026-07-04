@@ -439,7 +439,7 @@ export function Landing() {
               },
               {
                 t: "Plain files",
-                d: "One NDJSON file per session, header first, one event per line. Parse it with a shell one-liner; grep it like anything else you own.",
+                d: "One JSON snapshot in ~/.vibelog, fed from the transcripts your agent already writes. Parse it with a shell one-liner; grep it like anything else you own.",
               },
               {
                 t: "No telemetry",
