@@ -1,27 +1,43 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { type SessionEvent } from "@/lib/data";
 import { useLive } from "@/lib/live";
-import { fmtUsd, fmtTokens, fmtDuration, offsetClock, timeAgo } from "@/lib/format";
+import { fmtUsd6, fmtTokens, fmtDuration, offsetClock, timeAgo } from "@/lib/format";
 import { Card, Stat, StatusLabel, TapeReel } from "@/components/ui";
 import { Tape } from "@/components/tape";
 
-function EventRow({ e, live }: { e: SessionEvent; live: boolean }) {
+function EventRow({
+  e,
+  live,
+  selected,
+  onClick,
+  innerRef,
+}: {
+  e: SessionEvent;
+  live: boolean;
+  selected: boolean;
+  onClick: () => void;
+  innerRef: (el: HTMLLIElement | null) => void;
+}) {
   const hasBody = e.detail && (e.kind === "prompt" || e.kind === "output" || e.kind === "error");
   return (
-    <li className="relative pl-20">
+    <li
+      ref={innerRef}
+      onClick={onClick}
+      className="relative cursor-pointer scroll-mt-28 pl-20"
+    >
       <span className="absolute left-0 top-0.5 font-mono text-[11px] tabular-nums text-ink-3">
         {offsetClock(e.at)}
       </span>
       {hasBody ? (
         <div
-          className={`rounded-lg border p-4 ${
+          className={`rounded-lg border p-4 transition-shadow ${
             e.kind === "error" ? "border-rec/30 bg-rec-soft/40" : "border-line bg-surface"
-          }`}
+          } ${selected ? "ring-2 ring-rec/60" : ""}`}
         >
           <div className="mb-1.5 flex items-baseline justify-between gap-3">
             <span
@@ -40,7 +56,11 @@ function EventRow({ e, live }: { e: SessionEvent; live: boolean }) {
           <p className="text-sm leading-relaxed text-ink">{e.detail}</p>
         </div>
       ) : (
-        <div className="flex items-baseline justify-between gap-3 py-0.5">
+        <div
+          className={`-mx-2 flex items-baseline justify-between gap-3 rounded-md px-2 py-0.5 transition-colors ${
+            selected ? "bg-rec-soft/70" : ""
+          }`}
+        >
           <span className="font-mono text-[13px] text-ink-2">
             {e.kind === "thinking" ? (
               <span className="inline-flex items-center gap-1.5 italic text-ink-3">
@@ -69,6 +89,16 @@ export function SessionClient() {
     const t = setTimeout(() => setWaited(true), 2500);
     return () => clearTimeout(t);
   }, []);
+
+  // Scrubber selection: index into events, shared by the tape and transcript.
+  const [selected, setSelected] = useState<number | null>(null);
+  const rowRefs = useRef<(HTMLLIElement | null)[]>([]);
+  useEffect(() => setSelected(null), [id]); // drop stale highlight across sessions
+  // Tape click drives the transcript; transcript click only moves the playhead.
+  const selectFromTape = (i: number) => {
+    setSelected(i);
+    rowRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
   const s = sessions.find((x) => x.id === decodeURIComponent(id));
   if (!s)
     return (
@@ -109,11 +139,18 @@ export function SessionClient() {
       </div>
 
       <Card className="p-5">
-        <Tape events={s.events} durationSec={s.durationSec} live={s.status === "live"} height={72} />
+        <Tape
+          events={s.events}
+          durationSec={s.durationSec}
+          live={s.status === "live"}
+          height={72}
+          selected={selected}
+          onSelect={selectFromTape}
+        />
       </Card>
 
       <section className="grid grid-cols-2 gap-6 border-b border-line pb-8 lg:grid-cols-5">
-        <Stat label="Cost" value={fmtUsd(s.costUsd)} />
+        <Stat label="Cost" value={fmtUsd6(s.costUsd)} />
         <Stat label="Duration" value={fmtDuration(elapsed)} />
         <Stat label="Tokens in" value={fmtTokens(s.tokensIn)} />
         <Stat label="Tokens out" value={fmtTokens(s.tokensOut)} />
@@ -135,7 +172,16 @@ export function SessionClient() {
         ) : (
           <ol className="space-y-3">
             {s.events.map((e, i) => (
-              <EventRow key={i} e={e} live={s.status === "live"} />
+              <EventRow
+                key={i}
+                e={e}
+                live={s.status === "live"}
+                selected={selected === i}
+                onClick={() => setSelected(i)}
+                innerRef={(el) => {
+                  rowRefs.current[i] = el;
+                }}
+              />
             ))}
           </ol>
         )}

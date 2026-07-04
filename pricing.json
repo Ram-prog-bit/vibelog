@@ -1,0 +1,13 @@
+{
+  "_comment": "Single source of truth for model pricing. Add a model = add one line under models. $ per million tokens (list price). Matched by model-id prefix, most specific first. Cache reads billed at cacheReadMultiplier x input; cache writes at cacheWriteMultiplier x input.",
+  "cacheReadMultiplier": 0.1,
+  "cacheWriteMultiplier": 1.25,
+  "models": {
+    "claude-fable-5":  { "in": 20, "out": 90 },
+    "claude-opus-4-8": { "in": 15, "out": 75 },
+    "claude-opus":     { "in": 15, "out": 75 },
+    "claude-sonnet":   { "in": 3,  "out": 15 },
+    "claude-haiku":    { "in": 1,  "out": 5 }
+  },
+  "fallback": "claude-sonnet"
+}

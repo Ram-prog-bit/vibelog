@@ -1,6 +1,10 @@
 // Mock data for VibeLog. Everything is deterministic — a fixed clock and a
 // seeded PRNG — so server and client render identically.
 
+// Costs come from the shared pricing layer (single source: pricing.json).
+import { costOf } from "./pricing";
+export { costOf };
+
 export const NOW = new Date("2026-07-03T17:42:00").getTime();
 
 export type SessionStatus = "live" | "completed" | "failed" | "queued";
@@ -149,18 +153,6 @@ function branchFor(title: string) {
   return prefix + slug;
 }
 
-// Per-Mtok pricing used to make costs hang together with token counts
-const PRICING: Record<string, { inUsd: number; outUsd: number }> = {
-  "claude-fable-5": { inUsd: 20, outUsd: 90 },
-  "claude-opus-4-8": { inUsd: 15, outUsd: 75 },
-  "claude-sonnet-5": { inUsd: 3, outUsd: 15 },
-  "claude-haiku-4-5": { inUsd: 1, outUsd: 5 },
-};
-
-export function costOf(model: string, tokensIn: number, tokensOut: number) {
-  const p = PRICING[model] ?? PRICING["claude-sonnet-5"];
-  return (tokensIn / 1e6) * p.inUsd + (tokensOut / 1e6) * p.outUsd;
-}
 
 const OUTPUTS = [
   "Found the cause — the handler reads the raw body after the JSON middleware has already consumed it. Moving signature verification ahead of parsing.",
@@ -419,7 +411,74 @@ export function computeToolLatency(sessions: Session[]) {
     .sort((a, b) => b.calls - a.calls);
 }
 
+// nearest-rank percentile on a pre-sorted array
+function percentile(sorted: number[], p: number) {
+  if (!sorted.length) return 0;
+  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))];
+}
+
+export interface Summary {
+  totalSpend: number;
+  totalTokens: number;
+  totalSessions: number;
+  avgCostUsd: number;
+  failureRate: number; // 0..1 over finished sessions in the window
+  failed: number;
+  finished: number;
+  toolP50: number; // seconds, across all tool calls in the window
+  toolP95: number;
+}
+
+// The one function the analytics page trusts: every headline number computed
+// from real session data over the last 30 days. Same inputs → same numbers,
+// computed once so the tiles, charts, and breakdowns can never disagree.
+export function computeSummary(sessions: Session[], now: number): Summary {
+  const daily = computeDaily(sessions, now);
+  const todayStart = new Date(new Date(now).toDateString()).getTime();
+  const windowStart = todayStart - 29 * DAY;
+  const inWindow = sessions.filter((s) => s.startedAt >= windowStart);
+  const finished = inWindow.filter((s) => s.status === "completed" || s.status === "failed");
+  const failed = finished.filter((s) => s.status === "failed").length;
+
+  const durs = inWindow
+    .flatMap((s) => s.events)
+    .filter((e) => e.kind === "tool" && e.durMs)
+    .map((e) => e.durMs!)
+    .sort((a, b) => a - b);
+
+  return {
+    totalSpend: daily.reduce((a, d) => a + d.costUsd, 0),
+    totalTokens: daily.reduce((a, d) => a + d.tokens, 0),
+    totalSessions: daily.reduce((a, d) => a + d.sessions, 0),
+    avgCostUsd: finished.length
+      ? finished.reduce((a, s) => a + s.costUsd, 0) / finished.length
+      : 0,
+    failureRate: finished.length ? failed / finished.length : 0,
+    failed,
+    finished: finished.length,
+    toolP50: percentile(durs, 0.5) / 1000,
+    toolP95: percentile(durs, 0.95) / 1000,
+  };
+}
+
 export const MODEL_SPLIT = computeModelSplit(SESSIONS);
+
+// Offline/demo fallback — totals track the padded DAILY series so the chart and
+// the tiles agree; latency/failure come from the mock sessions.
+export const MOCK_SUMMARY: Summary = (() => {
+  const s = computeSummary(SESSIONS, NOW);
+  const totalSessions = DAILY.reduce((a, d) => a + d.sessions, 0);
+  const failed = DAILY.reduce((a, d) => a + d.failures, 0);
+  return {
+    ...s,
+    totalSpend: DAILY.reduce((a, d) => a + d.costUsd, 0),
+    totalTokens: DAILY.reduce((a, d) => a + d.tokens, 0),
+    totalSessions,
+    failed,
+    finished: totalSessions,
+    failureRate: totalSessions ? failed / totalSessions : 0,
+  };
+})();
 
 export const TOOL_LATENCY = [
   { tool: "Read", p50: 0.18, p95: 0.9, calls: 1841 },

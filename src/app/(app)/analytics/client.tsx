@@ -1,25 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { DAILY, TOOL_LATENCY, computeDaily, computeModelSplit, computeToolLatency } from "@/lib/data";
+import {
+  DAILY,
+  TOOL_LATENCY,
+  MOCK_SUMMARY,
+  computeDaily,
+  computeModelSplit,
+  computeToolLatency,
+  computeSummary,
+} from "@/lib/data";
 import { useLive } from "@/lib/live";
-import { fmtUsd, fmtTokens } from "@/lib/format";
+import { fmtUsd, fmtUsd6, fmtTokens, fmtPct } from "@/lib/format";
 import { PageHeader, Stat, Card } from "@/components/ui";
 import { BarChart, Sparkline, LatencyRanges } from "@/components/charts";
+
+const fmtSecs = (s: number) => (s >= 10 ? s.toFixed(1) : s.toFixed(2)) + "s";
 
 export function AnalyticsClient() {
   const { sessions, now, isLive } = useLive();
   const daily = isLive ? computeDaily(sessions, now) : DAILY;
   const modelSplit = computeModelSplit(sessions);
   const toolLatency = isLive ? computeToolLatency(sessions) : TOOL_LATENCY;
-
-  const totalSpend = daily.reduce((a, d) => a + d.costUsd, 0);
-  const totalSessions = daily.reduce((a, d) => a + d.sessions, 0);
-  const totalTokens = daily.reduce((a, d) => a + d.tokens, 0);
-  const finished = sessions.filter((s) => s.status === "completed" || s.status === "failed");
-  const avgCost = finished.length
-    ? finished.reduce((a, s) => a + s.costUsd, 0) / finished.length
-    : 0;
+  const sum = isLive ? computeSummary(sessions, now) : MOCK_SUMMARY;
   const maxModel = Math.max(1e-9, ...modelSplit.map((m) => m.costUsd));
 
   return (
@@ -29,11 +32,20 @@ export function AnalyticsClient() {
         sub="Cost and performance across every agent on this machine · last 30 days"
       />
 
-      <section className="grid grid-cols-2 gap-6 border-b border-line pb-8 lg:grid-cols-4">
-        <Stat label="Total spend" value={fmtUsd(totalSpend)} />
-        <Stat label="Sessions" value={totalSessions.toLocaleString("en-US")} />
-        <Stat label="Avg cost / session" value={fmtUsd(avgCost)} />
-        <Stat label="Tokens" value={fmtTokens(totalTokens)} />
+      <section className="grid grid-cols-2 gap-6 border-b border-line pb-8 lg:grid-cols-3">
+        <Stat label="Total spend" value={fmtUsd(sum.totalSpend)} />
+        <Stat label="Sessions" value={sum.totalSessions.toLocaleString("en-US")} />
+        <Stat label="Avg cost / session" value={fmtUsd6(sum.avgCostUsd)} />
+        <Stat label="Tokens" value={fmtTokens(sum.totalTokens)} />
+        <Stat
+          label="Failure rate"
+          value={fmtPct(sum.failureRate)}
+          hint={`${sum.failed} of ${sum.finished} finished sessions`}
+        />
+        <Stat
+          label="Tool latency p50 / p95"
+          value={`${fmtSecs(sum.toolP50)} / ${fmtSecs(sum.toolP95)}`}
+        />
       </section>
 
       <section>

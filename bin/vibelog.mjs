@@ -68,17 +68,29 @@ const phaseFor = (events) => {
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const trunc = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 
-// $/Mtok list prices; matched by model-id prefix
-const PRICING = [
-  ["claude-fable-5", 20, 90],
-  ["claude-opus-4-8", 15, 75],
-  ["claude-opus", 15, 75],
-  ["claude-sonnet", 3, 15],
-  ["claude-haiku", 1, 5],
-];
+// Pricing: single source of truth in pricing.json (adding a model = one line).
+// The dashboard reads the same file via src/lib/pricing.ts, so the recorder and
+// the charts can never disagree. Fallback baked in so the CLI runs even if the
+// file is missing.
+const PRICING = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(ROOT, "pricing.json"), "utf8"));
+  } catch {
+    return {
+      cacheReadMultiplier: 0.1,
+      cacheWriteMultiplier: 1.25,
+      models: { "claude-sonnet": { in: 3, out: 15 } },
+      fallback: "claude-sonnet",
+    };
+  }
+})();
+const MODELS = Object.entries(PRICING.models);
 const rateFor = (model) => {
-  const [, inUsd, outUsd] = PRICING.find(([p]) => (model || "").startsWith(p)) ?? PRICING[3];
-  return { inUsd, outUsd };
+  const hit =
+    MODELS.find(([p]) => (model || "").startsWith(p)) ??
+    MODELS.find(([p]) => p === PRICING.fallback);
+  const [, r] = hit;
+  return { inUsd: r.in, outUsd: r.out };
 };
 
 // ---------- mock collector ----------
@@ -289,6 +301,10 @@ function parseTranscript(file, mtimeMs) {
   }
   let firstTs = 0, lastTs = 0, model = "", branch = "", cwd = "", title = "", summary = "";
   let tokensIn = 0, tokensOut = 0, costUsd = 0, toolCalls = 0;
+  // Terminal outcome, updated in file order (chronological). A session is a
+  // clean completion iff the last thing that happened was the assistant ending
+  // its turn; an interrupt or API error after that flips it to failed.
+  let outcome = "";
   const events = [], pending = new Map(), files = new Set();
 
   for (const line of lines) {
@@ -307,12 +323,14 @@ function parseTranscript(file, mtimeMs) {
     if (e.gitBranch) branch = e.gitBranch;
     if (e.cwd) cwd = e.cwd;
     if (e.type === "summary" && e.summary) summary = e.summary;
+    if (e.isApiErrorMessage) outcome = "error";
     const at = firstTs ? Math.max(0, Math.round((ts - firstTs) / 1000)) : 0;
 
     if (e.type === "user" && !e.isMeta) {
       const c = e.message?.content;
       const parts = typeof c === "string" ? [{ type: "text", text: c }] : Array.isArray(c) ? c : [];
       for (const p of parts) {
+        if (p.type === "text" && /^\[Request interrupted/i.test(p.text?.trim() ?? "")) outcome = "interrupted";
         if (p.type === "tool_result" && pending.has(p.tool_use_id)) {
           const t = pending.get(p.tool_use_id);
           if (ts && t.ts) t.event.durMs = Math.max(1, ts - t.ts);
@@ -325,16 +343,19 @@ function parseTranscript(file, mtimeMs) {
     } else if (e.type === "assistant") {
       const m = e.message ?? {};
       if (m.model && m.model !== "<synthetic>") model = m.model;
+      if (m.stop_reason) outcome = m.stop_reason;
       const u = m.usage;
       if (u) {
         const inTok = (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
         tokensIn += inTok;
         tokensOut += u.output_tokens ?? 0;
+        // Same formula as src/lib/pricing.ts costOfUsage — rates + cache
+        // multipliers both come from pricing.json.
         const r = rateFor(m.model);
         costUsd +=
           ((u.input_tokens ?? 0) * r.inUsd +
-            (u.cache_creation_input_tokens ?? 0) * r.inUsd * 1.25 +
-            (u.cache_read_input_tokens ?? 0) * r.inUsd * 0.1 +
+            (u.cache_creation_input_tokens ?? 0) * r.inUsd * PRICING.cacheWriteMultiplier +
+            (u.cache_read_input_tokens ?? 0) * r.inUsd * PRICING.cacheReadMultiplier +
             (u.output_tokens ?? 0) * r.outUsd) /
           1e6;
       }
@@ -358,6 +379,13 @@ function parseTranscript(file, mtimeMs) {
 
   if (!model || !firstTs) return null; // empty or non-conversation file
   const live = mtimeMs > Date.now() - LIVE_MS;
+  // Clean completion = the last turn was the assistant ending normally. Anything
+  // else on a finished session (max_tokens, interrupt, API error, or a run that
+  // stopped mid-tool) counts as a failure for the failure-rate metric.
+  // ponytail: heuristic on stop_reason + interrupt markers; tighten if Claude
+  // Code ever writes an explicit exit status to the transcript.
+  const clean = outcome === "end_turn" || outcome === "stop_sequence";
+  const status = live ? "live" : clean ? "completed" : "failed";
   events.forEach((e, i) => (e.seq = i)); // before the slice below, so ids stay stable
   return {
     phase: live ? phaseFor(events) : undefined,
@@ -365,7 +393,7 @@ function parseTranscript(file, mtimeMs) {
     title: trunc(summary || title || (cwd ? path.basename(cwd) : "Claude Code session"), 72),
     agent: "claude-code",
     model,
-    status: live ? "live" : "completed",
+    status,
     branch: branch || "-",
     startedAt: firstTs,
     durationSec: Math.max(1, Math.round((lastTs - firstTs) / 1000)),

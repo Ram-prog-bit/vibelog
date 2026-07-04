@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Search } from "lucide-react";
 import { type SessionStatus } from "@/lib/data";
 import { useLive } from "@/lib/live";
-import { fmtUsd, fmtTokens, fmtDuration, timeAgo } from "@/lib/format";
+import { fmtUsd6, fmtTokens, fmtDuration, timeAgo } from "@/lib/format";
 import { PageHeader, Card, StatusLabel } from "@/components/ui";
 
 const FILTERS: { key: SessionStatus | "all"; label: string }[] = [
@@ -110,7 +110,7 @@ export function SessionsTable() {
                   {fmtTokens(s.tokensIn + s.tokensOut)}
                 </td>
                 <td className="whitespace-nowrap px-2 py-3 text-right font-mono text-[11px] tabular-nums">
-                  {fmtUsd(s.costUsd)}
+                  {fmtUsd6(s.costUsd)}
                 </td>
                 <td className="whitespace-nowrap py-3 pl-2 pr-4 text-right font-mono text-[11px] tabular-nums text-ink-3 max-sm:hidden">
                   {timeAgo(s.startedAt, now)}

@@ -4,6 +4,17 @@ export function fmtUsd(v: number) {
   return v >= 100 ? "$" + Math.round(v).toLocaleString("en-US") : "$" + v.toFixed(2);
 }
 
+// Per-session cost — financial precision. Real sessions run fractions of a cent
+// to a few dollars, so show 6 decimals until the number is large enough not to.
+export function fmtUsd6(v: number) {
+  if (v === 0) return "$0";
+  return v >= 1000 ? "$" + Math.round(v).toLocaleString("en-US") : "$" + v.toFixed(6);
+}
+
+export function fmtPct(v: number) {
+  return (v * 100).toFixed(1) + "%";
+}
+
 export function fmtTokens(v: number) {
   if (v >= 1e9) return (v / 1e9).toFixed(1) + "B";
   if (v >= 1e6) return (v / 1e6).toFixed(1) + "M";

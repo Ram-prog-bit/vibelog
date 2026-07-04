@@ -22,6 +22,8 @@ export function Tape({
   height = 64,
   legend = true,
   className = "",
+  selected = null,
+  onSelect,
 }: {
   events: SessionEvent[];
   durationSec: number;
@@ -29,8 +31,12 @@ export function Tape({
   height?: number;
   legend?: boolean;
   className?: string;
+  selected?: number | null;
+  onSelect?: (i: number) => void;
 }) {
   const [tip, setTip] = useState<{ x: number; label: string; t: string } | null>(null);
+  // Scrubber cursor: svg-space x of the mouse, or null when off the tape.
+  const [cursor, setCursor] = useState<number | null>(null);
   // Draw delays are frozen per event: the opening render staggers left-to-right
   // (the cinematic draw), events streamed in later pop immediately — and a
   // frozen delay means live re-renders never restart a spike's animation.
@@ -43,6 +49,12 @@ export function Tape({
   const H = height;
   const base = H - 12;
   const px = (at: number) => 6 + (at / Math.max(1, durationSec)) * (W - 12);
+  // Mouse clientX → svg-space x, clamped to the tape's drawable span.
+  const svgX = (ev: React.MouseEvent) => {
+    const r = ev.currentTarget.getBoundingClientRect();
+    return Math.max(6, Math.min(W - 6, ((ev.clientX - r.left) / r.width) * W));
+  };
+  const cursorAt = cursor == null ? 0 : ((cursor - 6) / (W - 12)) * durationSec;
 
   return (
     <div className={className}>
@@ -61,7 +73,43 @@ export function Tape({
             </div>
           </div>
         )}
-        <svg viewBox={`0 0 ${W} ${H}`} className="block w-full" onMouseLeave={() => setTip(null)}>
+        {cursor != null && !tip && (
+          <div
+            className="pointer-events-none absolute -top-1 z-10 -translate-y-full whitespace-nowrap font-mono text-[10px] tabular-nums text-ink-3"
+            style={{
+              left: `${(cursor / W) * 100}%`,
+              transform: `translate(${cursor / W > 0.9 ? "-100%" : cursor / W < 0.1 ? "0" : "-50%"}, -100%)`,
+            }}
+          >
+            {offsetClock(Math.max(0, cursorAt))}
+          </div>
+        )}
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          className={`block w-full ${onSelect ? "cursor-pointer" : ""}`}
+          onMouseMove={(ev) => setCursor(svgX(ev))}
+          onMouseLeave={() => {
+            setTip(null);
+            setCursor(null);
+          }}
+          onClick={
+            onSelect
+              ? (ev) => {
+                  const cx = svgX(ev);
+                  let best = -1;
+                  let bd = Infinity;
+                  events.forEach((e, i) => {
+                    const d = Math.abs(px(e.at) - cx);
+                    if (d < bd) {
+                      bd = d;
+                      best = i;
+                    }
+                  });
+                  if (best >= 0) onSelect(best);
+                }
+              : undefined
+          }
+        >
           {/* sprocket ruler */}
           {Array.from({ length: 25 }, (_, i) => (
             <line
@@ -126,6 +174,30 @@ export function Tape({
               </g>
             );
           })}
+          {cursor != null && (
+            <line
+              x1={cursor}
+              x2={cursor}
+              y1={8}
+              y2={base}
+              stroke="var(--color-ink-3)"
+              strokeWidth={1}
+              pointerEvents="none"
+            />
+          )}
+          {selected != null && events[selected] && (
+            <g pointerEvents="none">
+              <line
+                x1={px(events[selected].at)}
+                x2={px(events[selected].at)}
+                y1={base}
+                y2={8}
+                stroke="var(--color-rec)"
+                strokeWidth={1.5}
+              />
+              <circle cx={px(events[selected].at)} cy={8} r={3.5} fill="var(--color-rec)" />
+            </g>
+          )}
           {live && (
             <g>
               <line
