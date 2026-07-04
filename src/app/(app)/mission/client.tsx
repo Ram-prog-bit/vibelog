@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, FolderGit2, GitBranch } from "lucide-react";
 import { DAILY, computeDaily, type Session } from "@/lib/data";
 import { useLive, type Mode } from "@/lib/live";
 import { fmtUsd, fmtTokens, fmtDuration, timeAgo } from "@/lib/format";
@@ -41,7 +41,7 @@ function ModeToggle({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void 
 }
 
 export function MissionClient() {
-  const { sessions, now, isLive, mode, alive, setMode } = useLive();
+  const { sessions, now, isLive, mode, alive, setMode, project } = useLive();
   const daily = isLive ? computeDaily(sessions, now) : DAILY;
   const today = daily[daily.length - 1];
   const live = sessions.filter((s) => s.status === "live");
@@ -65,6 +65,18 @@ export function MissionClient() {
         })}
         right={
           <span className="inline-flex flex-wrap items-center gap-3">
+            {project && (
+              <span className="inline-flex items-center gap-2 font-mono text-[11px] text-ink-2">
+                <span className="inline-flex items-center gap-1">
+                  <FolderGit2 size={12} className="text-ink-3" />
+                  {project.projectName}
+                </span>
+                <span className="inline-flex items-center gap-1 text-ink-3">
+                  <GitBranch size={11} />
+                  {project.gitBranch}
+                </span>
+              </span>
+            )}
             {mode === "live" && !alive && (
               <span className="font-mono text-[10px] text-ink-3">
                 run <span className="text-ink-2">vibelog start</span> to connect

@@ -16,10 +16,17 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { NOW, SESSIONS, type Session } from "./data";
 
+export interface CurrentProject {
+  projectName: string;
+  gitBranch: string;
+  gitRepo?: string;
+}
+
 export interface LiveState {
   now: number;
   source: "mock" | "claude-code";
   sessions: Session[];
+  project?: CurrentProject | null; // the dir vibelog was started in
 }
 
 export type Mode = "mock" | "live";
@@ -87,5 +94,6 @@ export function useLive() {
     setMode: setManual,
     now: real?.now ?? NOW,
     sessions: real?.sessions ?? (isLive ? [] : SESSIONS),
+    project: real?.project ?? null,
   };
 }

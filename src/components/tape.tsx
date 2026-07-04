@@ -40,15 +40,28 @@ export function Tape({
   // Draw delays are frozen per event: the opening render staggers left-to-right
   // (the cinematic draw), events streamed in later pop immediately — and a
   // frozen delay means live re-renders never restart a spike's animation.
-  const delays = useRef(new Map<number, number>());
-  const mounted = useRef(false);
-  useEffect(() => {
-    mounted.current = true;
-  }, []);
+  const [delays, setDelays] = useState(new Map<number, number>());
+  const mountedRef = useRef(false);
   const W = 720;
   const H = height;
   const base = H - 12;
   const px = (at: number) => 6 + (at / Math.max(1, durationSec)) * (W - 12);
+  useEffect(() => {
+    setDelays((prev) => {
+      const next = new Map(prev);
+      let changed = false;
+      events.forEach((e, i) => {
+        const key = e.seq ?? i;
+        if (!next.has(key)) {
+          next.set(key, mountedRef.current ? 0 : (px(e.at) / W) * 0.5);
+          changed = true;
+        }
+      });
+      mountedRef.current = true;
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events]);
   // Mouse clientX → svg-space x, clamped to the tape's drawable span.
   const svgX = (ev: React.MouseEvent) => {
     const r = ev.currentTarget.getBoundingClientRect();
@@ -128,11 +141,7 @@ export function Tape({
             const x = px(e.at);
             const h = k.h * (H - 24);
             const key = e.seq ?? i;
-            let delay = delays.current.get(key);
-            if (delay === undefined) {
-              delay = mounted.current ? 0 : (x / W) * 0.5;
-              delays.current.set(key, delay);
-            }
+            const delay = delays.get(key) ?? 0;
             return (
               <g key={key}>
                 {e.kind === "checkpoint" ? (

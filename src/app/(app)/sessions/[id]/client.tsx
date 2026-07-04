@@ -81,6 +81,10 @@ function EventRow({
 
 export function SessionClient() {
   const { id } = useParams<{ id: string }>();
+  return <SessionView key={id} id={id} />;
+}
+
+function SessionView({ id }: { id: string }) {
   const { sessions, now } = useLive();
   // live ids only exist once the first SSE frame lands — give it a beat
   // before declaring the session missing instead of hard-404ing
@@ -91,9 +95,9 @@ export function SessionClient() {
   }, []);
 
   // Scrubber selection: index into events, shared by the tape and transcript.
+  // Reset for free on session change: the `key={id}` above remounts this component.
   const [selected, setSelected] = useState<number | null>(null);
   const rowRefs = useRef<(HTMLLIElement | null)[]>([]);
-  useEffect(() => setSelected(null), [id]); // drop stale highlight across sessions
   // Tape click drives the transcript; transcript click only moves the playhead.
   const selectFromTape = (i: number) => {
     setSelected(i);
@@ -131,7 +135,8 @@ export function SessionClient() {
           <div>
             <h1 className="text-[22px] font-semibold tracking-tight">{s.title}</h1>
             <div className="mt-1.5 font-mono text-[11px] text-ink-3">
-              {s.id} · {s.agent} · {s.model} · {s.branch} · started {timeAgo(s.startedAt, now)}
+              {s.id} · {s.agent} · {s.model} · {s.projectName ? s.projectName + " · " : ""}
+              {s.gitBranch} · started {timeAgo(s.startedAt, now)}
             </div>
           </div>
           <StatusLabel status={s.status} />

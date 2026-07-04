@@ -10,6 +10,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -17,6 +18,68 @@ const HOME = os.homedir();
 const DIR = process.env.VIBELOG_DIR || path.join(HOME, ".vibelog");
 const STATE = path.join(DIR, "state.json");
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+// ---------- project tracking (.vibelog + git) ----------
+//
+// A `.vibelog` file in a project directory pins a stable projectId, so every
+// session run in that directory groups together regardless of how many chats
+// spawned it. Small, human-readable JSON — commit it or gitignore it, your call.
+// Git branch/repo come straight from git, so sessions also group by branch.
+
+function readVibelog(dir) {
+  try {
+    const v = JSON.parse(fs.readFileSync(path.join(dir, ".vibelog"), "utf8"));
+    if (v && v.projectId)
+      return { projectId: v.projectId, projectName: v.projectName || path.basename(dir) };
+  } catch {}
+  return null;
+}
+
+function ensureVibelog(dir) {
+  const existing = readVibelog(dir);
+  if (existing) return existing;
+  const info = {
+    projectId: crypto.randomUUID(),
+    projectName: path.basename(dir) || "project",
+    createdAt: new Date().toISOString(),
+  };
+  try {
+    fs.writeFileSync(path.join(dir, ".vibelog"), JSON.stringify(info, null, 2) + "\n");
+  } catch {}
+  return { projectId: info.projectId, projectName: info.projectName };
+}
+
+function gitInfoFor(dir) {
+  const run = (args) => {
+    try {
+      const r = spawnSync("git", ["-C", dir, ...args], { encoding: "utf8" });
+      return r.status === 0 ? r.stdout.trim() : "";
+    } catch {
+      return "";
+    }
+  };
+  const top = run(["rev-parse", "--show-toplevel"]);
+  return {
+    gitBranch: run(["rev-parse", "--abbrev-ref", "HEAD"]) || "no-branch",
+    gitRepo: top ? path.basename(top) : "",
+  };
+}
+
+// Per-cwd .vibelog lookup for the real collector, cached — one read per unique
+// working directory, not per session per tick. No git here: transcripts already
+// record the branch each session ran on (see parseTranscript), so the hot path
+// spawns no processes.
+// ponytail: cache keyed on cwd; a .vibelog created/edited after first read is
+// picked up on the next `vibelog start`, not mid-run.
+const metaCache = new Map();
+function metaFor(cwd) {
+  if (!cwd) return {};
+  if (!metaCache.has(cwd)) metaCache.set(cwd, readVibelog(cwd) || {});
+  return metaCache.get(cwd);
+}
+
+// The project the dashboard header shows (the dir vibelog was started in).
+let CURRENT_PROJECT = null;
 
 // ---------- args ----------
 
@@ -42,7 +105,7 @@ fs.mkdirSync(DIR, { recursive: true });
 // a stable `seq`. state.json's mtime doubles as the CLI heartbeat.
 function writeState(sessions, source) {
   for (const s of sessions) s.events.forEach((e, i) => (e.seq ??= i));
-  const json = JSON.stringify({ now: Date.now(), source, sessions }, (k, v) =>
+  const json = JSON.stringify({ now: Date.now(), source, sessions, project: CURRENT_PROJECT }, (k, v) =>
     k.startsWith("_") ? undefined : v
   );
   fs.writeFileSync(STATE + ".tmp", json);
@@ -100,6 +163,12 @@ const AGENTS = [
   { name: "claude-code", model: "claude-opus-4-8" },
   { name: "ci-reviewer", model: "claude-sonnet-5" },
   { name: "docs-bot", model: "claude-haiku-4-5" },
+];
+// Fake but realistic projects so "group by project/branch" demos in mock mode.
+const MOCK_PROJECTS = [
+  { projectId: "a1c3e5f7-0001-4a00-8000-000000000001", projectName: "acme-web", gitRepo: "acme-web" },
+  { projectId: "a1c3e5f7-0002-4a00-8000-000000000002", projectName: "acme-api", gitRepo: "acme-api" },
+  { projectId: "a1c3e5f7-0003-4a00-8000-000000000003", projectName: "infra", gitRepo: "infra" },
 ];
 const TITLES = [
   "Migrate billing webhooks to v2 signatures",
@@ -176,13 +245,17 @@ function mockEvent(s, at) {
 function mockSession(status, startedAt) {
   const a = pick(AGENTS);
   const title = pick(TITLES);
+  const proj = pick(MOCK_PROJECTS);
   const s = {
     id: nextId(),
     title,
     agent: a.name,
     model: a.model,
     status,
-    branch: branchFor(title),
+    gitBranch: branchFor(title),
+    projectId: proj.projectId,
+    projectName: proj.projectName,
+    gitRepo: proj.gitRepo,
     startedAt,
     durationSec: 0,
     tokensIn: 0,
@@ -387,6 +460,7 @@ function parseTranscript(file, mtimeMs) {
   const clean = outcome === "end_turn" || outcome === "stop_sequence";
   const status = live ? "live" : clean ? "completed" : "failed";
   events.forEach((e, i) => (e.seq = i)); // before the slice below, so ids stay stable
+  const meta = metaFor(cwd); // projectId/projectName from <cwd>/.vibelog
   return {
     phase: live ? phaseFor(events) : undefined,
     id: path.basename(file, ".jsonl").slice(0, 8),
@@ -394,7 +468,14 @@ function parseTranscript(file, mtimeMs) {
     agent: "claude-code",
     model,
     status,
-    branch: branch || "-",
+    // transcript records the branch the session actually ran on; absent → the
+    // session didn't run in a git repo, so "no-branch" (matches the spec).
+    gitBranch: branch || "no-branch",
+    // ponytail: repo label = cwd basename (the repo root in the common case);
+    // avoids a git spawn per session on every tick.
+    gitRepo: cwd ? path.basename(cwd) : undefined,
+    projectId: meta.projectId,
+    projectName: meta.projectName,
     startedAt: firstTs,
     durationSec: Math.max(1, Math.round((lastTs - firstTs) / 1000)),
     tokensIn,
@@ -491,6 +572,16 @@ function startDashboard() {
 
 // ---------- go ----------
 
-if (MOCK) startMock();
-else startReal();
+if (MOCK) {
+  // demo header: a fake but realistic current project (no file written in mock)
+  const p = readVibelog(process.cwd()) || MOCK_PROJECTS[0];
+  CURRENT_PROJECT = { projectName: p.projectName, gitBranch: "feat/dashboard-polish", gitRepo: p.gitRepo };
+  startMock();
+} else {
+  // ensure this directory has a .vibelog, then report it to the dashboard header
+  const proj = ensureVibelog(process.cwd());
+  const git = gitInfoFor(process.cwd());
+  CURRENT_PROJECT = { projectName: proj.projectName, gitBranch: git.gitBranch, gitRepo: git.gitRepo };
+  startReal();
+}
 if (!NO_DASH) startDashboard();

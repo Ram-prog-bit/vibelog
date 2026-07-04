@@ -35,7 +35,11 @@ export interface Session {
   agent: string;
   model: string;
   status: SessionStatus;
-  branch: string;
+  gitBranch: string;
+  gitRepo?: string;
+  // From the <cwd>/.vibelog tracker; absent → session shows as "Untracked".
+  projectId?: string;
+  projectName?: string;
   startedAt: number; // epoch ms
   durationSec: number;
   tokensIn: number;
@@ -67,6 +71,13 @@ const between = (lo: number, hi: number) => lo + rand() * (hi - lo);
 const MIN = 60_000;
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
+
+// Fake but realistic projects so "group by project/branch" works in demo data.
+export const PROJECTS = [
+  { projectId: "a1c3e5f7-0001-4a00-8000-000000000001", projectName: "acme-web", gitRepo: "acme-web" },
+  { projectId: "a1c3e5f7-0002-4a00-8000-000000000002", projectName: "acme-api", gitRepo: "acme-api" },
+  { projectId: "a1c3e5f7-0003-4a00-8000-000000000003", projectName: "infra", gitRepo: "infra" },
+];
 
 export const AGENTS = [
   { name: "claude-code", model: "claude-fable-5", desc: "Terminal agent on this machine" },
@@ -268,6 +279,7 @@ function agentFor(title: string) {
 function makeSession(i: number, startedAt: number, status: SessionStatus): Session {
   const title = TITLES[i % TITLES.length];
   const agent = agentFor(title);
+  const proj = PROJECTS[i % PROJECTS.length];
   const queued = status === "queued";
   const durationSec = status === "live" ? Math.floor((NOW - startedAt) / 1000) : queued ? 0 : Math.floor(between(90, 5400));
   const tokensIn = queued ? 0 : Math.floor(between(8_000, 900_000));
@@ -279,7 +291,10 @@ function makeSession(i: number, startedAt: number, status: SessionStatus): Sessi
     agent: agent.name,
     model: agent.model,
     status,
-    branch: branchFor(title),
+    gitBranch: branchFor(title),
+    gitRepo: proj.gitRepo,
+    projectId: proj.projectId,
+    projectName: proj.projectName,
     startedAt,
     durationSec,
     tokensIn,

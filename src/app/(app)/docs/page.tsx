@@ -106,9 +106,12 @@ vibelog start --no-dash   collector only, no dashboard server`}</CodeBlock>
               <code className="font-mono text-ink">/api/stream</code>. The format is stable and
               boring on purpose — you can parse it with a shell one-liner.
             </p>
-            <CodeBlock>{`{"now":1783133038322,"source":"claude-code","sessions":[
+            <CodeBlock>{`{"now":1783133038322,"source":"claude-code",
+ "project":{"projectName":"acme-web","gitBranch":"fix/invoice-tz"},
+ "sessions":[
   {"id":"S-0998","agent":"claude-code","model":"claude-fable-5","status":"live",
-   "branch":"fix/invoice-tz","tokensIn":50591,"tokensOut":4309,"costUsd":0.21,
+   "gitBranch":"fix/invoice-tz","gitRepo":"acme-web","projectName":"acme-web",
+   "projectId":"a1c3e5f7-…","tokensIn":50591,"tokensOut":4309,"costUsd":0.21,
    "events":[{"at":0,"kind":"prompt","label":"Task","tokens":1204},
              {"at":14,"kind":"tool","label":"Read src/invoices/scheduler.ts","durMs":180}]}
 ]}`}</CodeBlock>
