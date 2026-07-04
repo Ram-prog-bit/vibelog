@@ -2,15 +2,46 @@
 
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
-import { DAILY, computeDaily } from "@/lib/data";
-import { useLive } from "@/lib/live";
+import { DAILY, computeDaily, type Session } from "@/lib/data";
+import { useLive, type Mode } from "@/lib/live";
 import { fmtUsd, fmtTokens, fmtDuration, timeAgo } from "@/lib/format";
 import { PageHeader, Stat, Card, StatusLabel, TapeReel } from "@/components/ui";
 import { Tape } from "@/components/tape";
 import { Sparkline } from "@/components/charts";
 
+// Prefer the phase the CLI reports; derive from the last event for demo data.
+function phaseOf(s: Session) {
+  const p =
+    s.phase ??
+    (s.events[s.events.length - 1]?.kind === "tool"
+      ? "tool"
+      : s.events[s.events.length - 1]?.kind === "thinking"
+        ? "reasoning"
+        : "writing");
+  return p === "tool" ? "running tools" : p;
+}
+
+function ModeToggle({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) {
+  return (
+    <span className="inline-flex overflow-hidden rounded border border-line font-mono text-[10px] uppercase tracking-wider">
+      {(["mock", "live"] as const).map((m) => (
+        <button
+          key={m}
+          onClick={() => setMode(m)}
+          aria-pressed={mode === m}
+          className={`px-2 py-[3px] transition-colors ${
+            mode === m ? "bg-wash text-ink" : "text-ink-3 hover:text-ink-2"
+          } ${m === "live" ? "border-l border-line" : ""}`}
+        >
+          {m}
+        </button>
+      ))}
+    </span>
+  );
+}
+
 export function MissionClient() {
-  const { sessions, now, isLive } = useLive();
+  const { sessions, now, isLive, mode, alive, setMode } = useLive();
   const daily = isLive ? computeDaily(sessions, now) : DAILY;
   const today = daily[daily.length - 1];
   const live = sessions.filter((s) => s.status === "live");
@@ -33,9 +64,17 @@ export function MissionClient() {
           day: "numeric",
         })}
         right={
-          <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-ink-2">
-            <span className="size-1.5 rounded-full bg-rec animate-blink" />
-            {live.length} recording
+          <span className="inline-flex flex-wrap items-center gap-3">
+            {mode === "live" && !alive && (
+              <span className="font-mono text-[10px] text-ink-3">
+                run <span className="text-ink-2">vibelog start</span> to connect
+              </span>
+            )}
+            <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-ink-2">
+              <span className="size-1.5 rounded-full bg-rec animate-blink" />
+              {live.length} recording
+            </span>
+            <ModeToggle mode={mode} setMode={setMode} />
           </span>
         }
       />
@@ -75,11 +114,7 @@ export function MissionClient() {
                 <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 font-mono text-[11px] tabular-nums text-ink-2">
                   <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-ink-3">
                     <TapeReel />
-                    {s.events[s.events.length - 1]?.kind === "tool"
-                      ? "running tools"
-                      : s.events[s.events.length - 1]?.kind === "thinking"
-                        ? "reasoning"
-                        : "writing"}
+                    {phaseOf(s)}
                   </span>
                   <span className="whitespace-nowrap">
                     {fmtDuration(Math.floor((now - s.startedAt) / 1000))} elapsed

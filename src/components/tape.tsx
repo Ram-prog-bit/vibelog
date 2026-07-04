@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SessionEvent, EventKind } from "@/lib/data";
 import { offsetClock } from "@/lib/format";
 
@@ -31,6 +31,14 @@ export function Tape({
   className?: string;
 }) {
   const [tip, setTip] = useState<{ x: number; label: string; t: string } | null>(null);
+  // Draw delays are frozen per event: the opening render staggers left-to-right
+  // (the cinematic draw), events streamed in later pop immediately — and a
+  // frozen delay means live re-renders never restart a spike's animation.
+  const delays = useRef(new Map<number, number>());
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+  }, []);
   const W = 720;
   const H = height;
   const base = H - 12;
@@ -71,8 +79,14 @@ export function Tape({
             const k = KIND[e.kind];
             const x = px(e.at);
             const h = k.h * (H - 24);
+            const key = e.seq ?? i;
+            let delay = delays.current.get(key);
+            if (delay === undefined) {
+              delay = mounted.current ? 0 : (x / W) * 0.5;
+              delays.current.set(key, delay);
+            }
             return (
-              <g key={i}>
+              <g key={key}>
                 {e.kind === "checkpoint" ? (
                   <rect
                     x={x - 3}
@@ -95,7 +109,7 @@ export function Tape({
                   strokeDasharray={live ? 1 : e.kind === "error" ? "3 2.5" : undefined}
                   style={
                     live
-                      ? { animation: `tape-draw 0.5s ease-out both`, animationDelay: `${(x / W) * 0.5}s` }
+                      ? { animation: `tape-draw 0.5s ease-out both`, animationDelay: `${delay}s` }
                       : undefined
                   }
                 />

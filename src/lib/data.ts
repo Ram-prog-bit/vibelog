@@ -19,7 +19,11 @@ export interface SessionEvent {
   detail?: string;
   durMs?: number;
   tokens?: number;
+  seq?: number; // stable id from the CLI — lets the tape append spikes without re-animating
 }
+
+// What the agent is doing right now; set by the CLI on live sessions.
+export type Phase = "reasoning" | "writing" | "tool";
 
 export interface Session {
   id: string;
@@ -37,6 +41,7 @@ export interface Session {
   filesTouched: number;
   tags: string[];
   events: SessionEvent[];
+  phase?: Phase; // live sessions only
 }
 
 // ponytail: mulberry32 — deterministic, good enough for mock data

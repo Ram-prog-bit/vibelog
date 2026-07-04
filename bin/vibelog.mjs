@@ -37,7 +37,11 @@ const PORT = Number((argv.find((a) => a.startsWith("--port=")) ?? "").split("=")
 
 fs.mkdirSync(DIR, { recursive: true });
 
+// Data contract with the dashboard (src/lib/live.tsx): full-state snapshots
+// { now, source, sessions } where live sessions carry `phase` and every event
+// a stable `seq`. state.json's mtime doubles as the CLI heartbeat.
 function writeState(sessions, source) {
+  for (const s of sessions) s.events.forEach((e, i) => (e.seq ??= i));
   const json = JSON.stringify({ now: Date.now(), source, sessions }, (k, v) =>
     k.startsWith("_") ? undefined : v
   );
@@ -57,6 +61,10 @@ function writeState(sessions, source) {
 // ---------- shared ----------
 
 const rint = (lo, hi) => Math.floor(lo + Math.random() * (hi - lo));
+const phaseFor = (events) => {
+  const k = events[events.length - 1]?.kind;
+  return k === "tool" ? "tool" : k === "thinking" || k === "prompt" ? "reasoning" : "writing";
+};
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const trunc = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 
@@ -191,6 +199,7 @@ function mockSession(status, startedAt) {
 
 function finishMock(s, failed) {
   s.status = failed ? "failed" : "completed";
+  delete s.phase;
   s.events.push(
     failed
       ? { at: s.durationSec, kind: "error", label: "Session failed", detail: "Command exited 1: tests still failing after the retry limit." }
@@ -232,6 +241,7 @@ function startMock() {
       s.tokensOut += rint(30, 300);
       s.costUsd = mockCost(s.model, s.tokensIn, s.tokensOut);
       if (Math.random() < 0.5) s.events.push(mockEvent(s, s.durationSec));
+      s.phase = phaseFor(s.events);
       s.toolCalls = s.events.filter((e) => e.kind === "tool").length;
       s.filesTouched = Math.min(3, 1 + Math.floor(s.toolCalls / 4));
       if (s.durationSec > s._targetSec) {
@@ -348,7 +358,9 @@ function parseTranscript(file, mtimeMs) {
 
   if (!model || !firstTs) return null; // empty or non-conversation file
   const live = mtimeMs > Date.now() - LIVE_MS;
+  events.forEach((e, i) => (e.seq = i)); // before the slice below, so ids stay stable
   return {
+    phase: live ? phaseFor(events) : undefined,
     id: path.basename(file, ".jsonl").slice(0, 8),
     title: trunc(summary || title || (cwd ? path.basename(cwd) : "Claude Code session"), 72),
     agent: "claude-code",
@@ -409,6 +421,15 @@ function startReal() {
       for (const s of sessions)
         if (s.status === "live") s.durationSec = Math.max(1, Math.round((now - s.startedAt) / 1000));
     if (changed || anyLive) writeState(sessions, "claude-code");
+    else {
+      // heartbeat: keep state.json's mtime fresh so the dashboard can tell
+      // the CLI is alive even when no transcript is changing
+      try {
+        fs.utimesSync(STATE, new Date(), new Date());
+      } catch {
+        writeState(sessions, "claude-code"); // first run, no state file yet
+      }
+    }
   };
   tick();
   setInterval(tick, 2000);
