@@ -110,6 +110,15 @@ html {
   color: var(--color-paper);
 }
 
+/* links inherit ink instead of browser-default blue; text-* utilities still
+   override this where a muted/accent link is wanted. Must live in @layer base:
+   unlayered, it would beat Tailwind v4's layered utilities and swallow text-*. */
+@layer base {
+  a {
+    color: inherit;
+  }
+}
+
 body {
   font-family: var(--font-sans);
   font-feature-settings: "ss01";

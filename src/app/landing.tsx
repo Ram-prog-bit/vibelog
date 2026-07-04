@@ -225,13 +225,13 @@ export function Landing() {
             href="/mission"
             className="rounded-md bg-ink px-3.5 py-1.5 font-medium text-paper transition-opacity hover:opacity-85"
           >
-            Open workspace
+            Open mission control
           </Link>
         </div>
       </nav>
 
       {/* hero */}
-      <header className="mx-auto max-w-5xl px-6 pt-16 pb-20 md:pt-24">
+      <header className="mx-auto max-w-5xl px-6 pt-6 pb-20 md:pt-10">
         <motion.p
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -373,7 +373,7 @@ export function Landing() {
                 <span className="tabular-nums text-ink-3">01:07</span>
                 <span>Bash npm test -- invoices</span>
                 <span className="tabular-nums text-ink-3">01:23</span>
-                <span className="text-ink">◆ Tests green</span>
+                <span className="text-ink">● Tests green</span>
               </div>
             </div>
           </div>
@@ -460,7 +460,7 @@ export function Landing() {
         <Reveal>
           <p className="mx-auto max-w-2xl text-[34px] leading-[1.15] tracking-[-0.01em] md:text-[44px]">
             <span className="font-semibold">Stop scrolling terminal history.</span>{" "}
-            <em className="font-serif italic text-ink-2">Start keeping records.</em>
+            <em className="font-serif italic text-ink-2">Start keeping records</em>.
           </p>
           <Link
             href="/mission"
@@ -482,14 +482,14 @@ export function Landing() {
               <span className="size-1 rounded-full bg-rec" />
             </span>
             <span className="font-medium text-ink">VibeLog</span>
-            <span className="font-mono text-[11px] text-ink-3">0.4.2 · MIT</span>
+            <span className="font-mono text-[11px] text-ink-3">· MIT</span>
           </div>
           <div className="flex gap-6">
             <Link href="/docs" className="hover:text-ink">
               Docs
             </Link>
             <Link href="/mission" className="hover:text-ink">
-              Workspace
+              Mission control
             </Link>
             <Link href="/settings" className="hover:text-ink">
               Settings
