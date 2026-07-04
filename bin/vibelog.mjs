@@ -393,6 +393,7 @@ function parseTranscript(file, mtimeMs) {
     return null;
   }
   let firstTs = 0, lastTs = 0, model = "", branch = "", cwd = "", title = "", summary = "";
+  let activeMs = 0, prevTs = 0; // work time: gaps over 5 min don't count
   let tokensIn = 0, tokensOut = 0, costUsd = 0, toolCalls = 0;
   // Terminal outcome, updated in file order (chronological). A session is a
   // clean completion iff the last thing that happened was the assistant ending
@@ -415,6 +416,8 @@ function parseTranscript(file, mtimeMs) {
     const ts = e.timestamp ? Date.parse(e.timestamp) : 0;
     if (ts) {
       if (!firstTs) firstTs = ts;
+      if (prevTs) activeMs += Math.min(ts - prevTs, 300_000);
+      prevTs = ts;
       lastTs = ts;
     }
     if (e.gitBranch) branch = e.gitBranch;
@@ -503,6 +506,8 @@ function parseTranscript(file, mtimeMs) {
     projectName: meta.projectName,
     startedAt: firstTs,
     durationSec: Math.max(1, Math.round((lastTs - firstTs) / 1000)),
+    // a session resumed across days spans huge wall clock; this is time actually worked
+    activeSec: Math.max(1, Math.round(activeMs / 1000)),
     tokensIn,
     tokensOut,
     costUsd,

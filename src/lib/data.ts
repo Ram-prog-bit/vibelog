@@ -41,7 +41,8 @@ export interface Session {
   projectId?: string;
   projectName?: string;
   startedAt: number; // epoch ms
-  durationSec: number;
+  durationSec: number; // wall clock, first → last event (the tape's time axis)
+  activeSec?: number; // time actually worked — idle gaps over 5 min excluded
   tokensIn: number;
   tokensOut: number;
   costUsd: number;

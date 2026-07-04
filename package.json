@@ -1,15 +1,36 @@
 {
-  "name": "vibelog",
+  "name": "vibelogapp",
   "version": "0.1.0",
-  "private": true,
+  "description": "Local-first flight recorder for your coding agents — records live Claude Code sessions to your own disk and serves a dashboard on localhost.",
+  "license": "MIT",
+  "keywords": ["claude-code", "agents", "observability", "local-first", "dashboard", "cli"],
+  "engines": {
+    "node": ">=20"
+  },
   "bin": {
     "vibelog": "bin/vibelog.mjs"
   },
+  "files": [
+    "bin",
+    ".next",
+    "!.next/cache",
+    "!.next/dev",
+    "!.next/diagnostics",
+    "!.next/**/*.map",
+    "public",
+    "src",
+    "pricing.json",
+    "next.config.ts",
+    "tsconfig.json",
+    "postcss.config.mjs"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "check": "node bin/pricing.check.mjs && node bin/collector.check.mjs",
+    "prepublishOnly": "npm run check && npm run build"
   },
   "dependencies": {
     "lucide-react": "^1.23.0",

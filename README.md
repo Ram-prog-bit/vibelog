@@ -5,13 +5,13 @@ A flight recorder for your coding agents. Local only — no cloud, no telemetry;
 ## Quickstart
 
 ```bash
-npm install -g .        # from this repo (until published as `vibelog`)
+npm install -g vibelogapp
 
 vibelog start           # record real Claude Code sessions + dashboard on http://localhost:3232
 vibelog start --mock    # demo mode: 2-3 simulated agents, tokens ticking, sessions rotating
 ```
 
-First run builds the dashboard once (~a minute), then serves it with `next start`.
+The published package ships a prebuilt dashboard; from a repo clone (`npm install -g .`) the first run builds it once (~a minute), then serves it with `next start`.
 
 Flags: `--port=N` (default 3232), `--no-dash` (collector only).
 

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AGENTS } from "@/lib/data";
 import { PageHeader, Card } from "@/components/ui";
+import PRICING from "../../../../pricing.json";
 
 function Toggle({
   label,
@@ -48,12 +49,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-const RATES = [
-  { model: "claude-fable-5", inRate: "20.00", outRate: "90.00" },
-  { model: "claude-opus-4-8", inRate: "15.00", outRate: "75.00" },
-  { model: "claude-sonnet-5", inRate: "3.00", outRate: "15.00" },
-  { model: "claude-haiku-4-5", inRate: "1.00", outRate: "5.00" },
-];
+// Straight from pricing.json — the same file the recorder bills with, so this
+// table can never drift from the numbers on the analytics page.
+const RATES = Object.entries(PRICING.models).map(([model, r]) => ({
+  model,
+  inRate: r.in.toFixed(2),
+  outRate: r.out.toFixed(2),
+}));
 
 export function SettingsForm() {
   return (
@@ -113,7 +115,9 @@ export function SettingsForm() {
       <Section title="Pricing">
         <div className="py-3.5">
           <div className="mb-3 text-xs text-ink-2">
-            Rates in USD per million tokens. Used everywhere a cost is shown.
+            Rates in USD per million tokens, from pricing.json — used everywhere a cost is shown.
+            Cache reads bill at {PRICING.cacheReadMultiplier}× input; cache writes at{" "}
+            {PRICING.cacheWriteMultiplier}× input.
           </div>
           <table className="w-full text-sm">
             <thead>

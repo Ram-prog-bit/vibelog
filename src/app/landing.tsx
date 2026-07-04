@@ -469,7 +469,7 @@ export function Landing() {
             Open mission control <ArrowRight size={14} />
           </Link>
           <p className="mt-4 font-mono text-[11px] text-ink-3">
-            free while in beta · no account · npm install -g vibelog
+            free while in beta · no account · npm install -g vibelogapp
           </p>
         </Reveal>
       </section>

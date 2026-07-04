@@ -44,7 +44,7 @@ export default function DocsPage() {
               prompt, tool call, output, and token count, written to an append-only log on your own
               disk. Install the CLI, then run your agent through it.
             </p>
-            <CodeBlock>{`npm install -g vibelog
+            <CodeBlock>{`npm install -g vibelogapp
 
 # record Claude Code sessions + serve this dashboard on localhost:3232
 vibelog start

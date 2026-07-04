@@ -4,11 +4,14 @@ export function fmtUsd(v: number) {
   return v >= 100 ? "$" + Math.round(v).toLocaleString("en-US") : "$" + v.toFixed(2);
 }
 
-// Per-session cost — financial precision. Real sessions run fractions of a cent
-// to a few dollars, so show 6 decimals until the number is large enough not to.
+// Per-session cost — precision scaled to magnitude: sub-cent sessions need six
+// decimals to be visible at all; dollar sessions read best at cents.
 export function fmtUsd6(v: number) {
   if (v === 0) return "$0";
-  return v >= 1000 ? "$" + Math.round(v).toLocaleString("en-US") : "$" + v.toFixed(6);
+  if (v < 0.01) return "$" + v.toFixed(6);
+  if (v < 1) return "$" + v.toFixed(4);
+  if (v < 1000) return "$" + v.toFixed(2);
+  return "$" + Math.round(v).toLocaleString("en-US");
 }
 
 export function fmtPct(v: number) {

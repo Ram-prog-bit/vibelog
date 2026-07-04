@@ -222,7 +222,7 @@ export function SessionsTable() {
                     <span className="text-ink-3"> · {r.s.model}</span>
                   </td>
                   <td className="whitespace-nowrap px-2 py-3 text-right font-mono text-[11px] tabular-nums text-ink-2 max-md:hidden">
-                    {r.s.status === "queued" ? "—" : fmtDuration(r.s.durationSec)}
+                    {r.s.status === "queued" ? "—" : fmtDuration(r.s.activeSec ?? r.s.durationSec)}
                   </td>
                   <td className="whitespace-nowrap px-2 py-3 text-right font-mono text-[11px] tabular-nums text-ink-2 max-md:hidden">
                     {fmtTokens(r.s.tokensIn + r.s.tokensOut)}
