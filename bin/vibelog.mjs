@@ -361,9 +361,29 @@ function startMock() {
 
 // ---------- real collector (Claude Code transcripts) ----------
 
-const PROJECTS = path.join(HOME, ".claude", "projects");
+const PROJECTS = process.env.VIBELOG_PROJECTS || path.join(HOME, ".claude", "projects");
 const LIVE_MS = 120_000; // no writes for 2 min → session considered finished
 const MAX_AGE = 30 * 864e5;
+
+// First line of the prompt that reads like a task, not scaffolding. Prompts
+// often open with headers ("MISSION:", "Session name:") or shell commands —
+// skip lines that end in ":", look like commands/markdown noise, or are too
+// short to mean anything; fall back to the first 3+ word line, then the
+// whole prompt flattened.
+const CMDISH = /^(```|\$|>|#|cd |npm |npx |git |node |curl |powershell|pwsh |python |pip |In the terminal|Run |Then )/i;
+function titleFrom(text) {
+  let fallback = "";
+  for (const raw of text.split("\n")) {
+    const t = raw.trim().replace(/^[#*>`\s-]+/, "").replace(/[*`:]+$/, "").trim();
+    if (!t || CMDISH.test(t) || /^https?:/.test(t)) continue;
+    const words = t.split(/\s+/).length;
+    // header lines ("Session name:") end in ":" — only trust them when long
+    // enough to read as a task ("Fix 2 ESLint errors, no logic changes:")
+    if (words >= 4 && (words >= 5 || !raw.trim().endsWith(":"))) return t;
+    if (!fallback && words >= 3) fallback = t;
+  }
+  return fallback || text.replace(/\s+/g, " ").trim();
+}
 
 function parseTranscript(file, mtimeMs) {
   let lines;
@@ -379,6 +399,10 @@ function parseTranscript(file, mtimeMs) {
   // its turn; an interrupt or API error after that flips it to failed.
   let outcome = "";
   const events = [], pending = new Map(), files = new Set();
+  // One assistant API message spans multiple JSONL lines (one per content
+  // block), each repeating the same message.usage — count it once per id or
+  // costs inflate ~2.4x on real transcripts.
+  const billed = new Set();
 
   for (const line of lines) {
     if (!line.trim()) continue;
@@ -409,7 +433,7 @@ function parseTranscript(file, mtimeMs) {
           if (ts && t.ts) t.event.durMs = Math.max(1, ts - t.ts);
           pending.delete(p.tool_use_id);
         } else if (p.type === "text" && p.text && !/^<|^Caveat:/.test(p.text.trim())) {
-          if (!title) title = p.text.trim().split("\n")[0];
+          if (!title) title = titleFrom(p.text.trim());
           events.push({ at, kind: "prompt", label: "Task", detail: trunc(p.text.trim(), 280) });
         }
       }
@@ -418,7 +442,8 @@ function parseTranscript(file, mtimeMs) {
       if (m.model && m.model !== "<synthetic>") model = m.model;
       if (m.stop_reason) outcome = m.stop_reason;
       const u = m.usage;
-      if (u) {
+      if (u && !billed.has(m.id)) {
+        billed.add(m.id);
         const inTok = (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
         tokensIn += inTok;
         tokensOut += u.output_tokens ?? 0;
@@ -464,7 +489,7 @@ function parseTranscript(file, mtimeMs) {
   return {
     phase: live ? phaseFor(events) : undefined,
     id: path.basename(file, ".jsonl").slice(0, 8),
-    title: trunc(summary || title || (cwd ? path.basename(cwd) : "Claude Code session"), 72),
+    title: trunc(title || summary || (cwd ? path.basename(cwd) + " session" : "Claude Code session"), 72),
     agent: "claude-code",
     model,
     status,
