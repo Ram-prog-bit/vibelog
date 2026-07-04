@@ -46,15 +46,15 @@ export default function DocsPage() {
             </p>
             <CodeBlock>{`npm install -g vibelog
 
-# wrap any agent command — nothing else changes
-vibelog record -- claude -p "fix the failing test"
+# record Claude Code sessions + serve this dashboard on localhost:3232
+vibelog start
 
-# or watch a directory your agents already log to
-vibelog watch ~/.claude/projects`}</CodeBlock>
+# demo mode — simulated agents, indistinguishable to the dashboard
+vibelog start --mock`}</CodeBlock>
             <p>
-              The first recording creates <code className="font-mono text-ink">~/.vibelog</code>.
-              Open the workspace with <code className="font-mono text-ink">vibelog open</code> — it
-              serves this UI on localhost and never binds to a public interface.
+              The first run creates <code className="font-mono text-ink">~/.vibelog</code> and
+              serves this UI on localhost — it never binds to a public interface. Sessions your
+              agents are running right now appear on Mission control within a second.
             </p>
           </section>
 
@@ -84,29 +84,34 @@ vibelog watch ~/.claude/projects`}</CodeBlock>
 
           <section id="cli" className="space-y-4 scroll-mt-8">
             <h2>CLI reference</h2>
-            <CodeBlock>{`vibelog record -- <cmd>   run a command and record it as a session
-vibelog watch <dir>       tail an agent's own log directory
-vibelog ls                list sessions, newest first
-vibelog open [id]         open the workspace, or one session
-vibelog export [id]       write NDJSON to stdout
-vibelog gc                apply the retention policy now`}</CodeBlock>
+            <CodeBlock>{`vibelog start             record Claude Code sessions + serve the dashboard
+vibelog start --mock      simulate a busy machine (demos, development)
+vibelog start --port=N    dashboard port (default 3232)
+vibelog start --no-dash   collector only, no dashboard server`}</CodeBlock>
             <p>
               Every command reads and writes only inside{" "}
               <code className="font-mono text-ink">~/.vibelog</code>. There is no login, no
-              telemetry, and no network access unless you add a remote in Settings.
+              telemetry, and no network access. Real mode tails the transcripts Claude Code
+              already writes under <code className="font-mono text-ink">~/.claude/projects</code>{" "}
+              — no changes to how you launch your agent.
             </p>
           </section>
 
           <section id="format" className="space-y-4 scroll-mt-8">
             <h2>Data format</h2>
             <p>
-              Sessions are newline-delimited JSON, one event per line, first line is the header.
-              The format is stable and boring on purpose — you can parse it with a shell one-liner.
+              The collector writes one JSON snapshot to{" "}
+              <code className="font-mono text-ink">~/.vibelog/state.json</code>: a timestamp and an
+              array of sessions, each with its events. The dashboard streams it over SSE from{" "}
+              <code className="font-mono text-ink">/api/stream</code>. The format is stable and
+              boring on purpose — you can parse it with a shell one-liner.
             </p>
-            <CodeBlock>{`{"v":1,"id":"S-0998","agent":"claude-code","model":"claude-fable-5","branch":"fix/invoice-tz"}
-{"at":0,"kind":"prompt","tokens":1204,"text":"Fix timezone bug in the invoice scheduler..."}
-{"at":14,"kind":"tool","label":"Read src/invoices/scheduler.ts","durMs":180}
-{"at":96,"kind":"output","tokens":412,"text":"The scheduler stores wall-clock times..."}`}</CodeBlock>
+            <CodeBlock>{`{"now":1783133038322,"source":"claude-code","sessions":[
+  {"id":"S-0998","agent":"claude-code","model":"claude-fable-5","status":"live",
+   "branch":"fix/invoice-tz","tokensIn":50591,"tokensOut":4309,"costUsd":0.21,
+   "events":[{"at":0,"kind":"prompt","label":"Task","tokens":1204},
+             {"at":14,"kind":"tool","label":"Read src/invoices/scheduler.ts","durMs":180}]}
+]}`}</CodeBlock>
           </section>
 
           <section id="faq" className="space-y-5 scroll-mt-8">
@@ -122,26 +127,17 @@ vibelog gc                apply the retention policy now`}</CodeBlock>
             <div>
               <h3>Does recording slow my agent down?</h3>
               <p className="mt-1">
-                No. Events are buffered and flushed off the hot path; overhead measures under a
-                millisecond per event.
-              </p>
-            </div>
-            <div>
-              <h3>What about secrets in prompts?</h3>
-              <p className="mt-1">
-                Redaction runs before anything touches disk. Values matching your{" "}
-                <code className="font-mono text-ink">.env</code> keys are replaced with hashes, and
-                you can add patterns of your own in Settings.
+                No. The collector reads the transcripts your agent already writes — nothing runs in
+                the agent&apos;s path.
               </p>
             </div>
             <div>
               <h3>Which agents work?</h3>
               <p className="mt-1">
-                Anything that runs as a command works with{" "}
-                <code className="font-mono text-ink">vibelog record</code>. Claude Code, Codex, and
-                anything that writes JSONL logs also work with{" "}
-                <code className="font-mono text-ink">vibelog watch</code>, which needs no changes to
-                how you launch your agent.
+                Claude Code works today: <code className="font-mono text-ink">vibelog start</code>{" "}
+                tails its JSONL transcripts with no changes to how you launch it. Other agents that
+                write JSONL logs are next; <code className="font-mono text-ink">--mock</code> shows
+                the full experience meanwhile.
               </p>
             </div>
           </section>

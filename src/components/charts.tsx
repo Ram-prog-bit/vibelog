@@ -53,7 +53,7 @@ export function Sparkline({
   const [idx, setIdx] = useState<number | null>(null);
   const W = 400;
   const H = height;
-  const max = Math.max(...points) * 1.1;
+  const max = Math.max(...points) * 1.1 || 1;
   const min = 0;
   const px = (i: number) => (i / (points.length - 1)) * W;
   const py = (v: number) => H - 4 - ((v - min) / (max - min)) * (H - 8);
@@ -115,7 +115,7 @@ export function BarChart({
   const W = 600;
   const H = height;
   const pad = { t: 8, b: 18 };
-  const max = Math.max(...points) * 1.08;
+  const max = Math.max(...points) * 1.08 || 1;
   const bw = W / points.length;
   const py = (v: number) => pad.t + (1 - v / max) * (H - pad.t - pad.b);
   const grid = [0.5, 1].map((f) => max * f * 0.9);

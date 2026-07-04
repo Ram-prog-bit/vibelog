@@ -1,36 +1,37 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# VibeLog
 
-## Getting Started
+A flight recorder for your coding agents. Local only — no cloud, no telemetry; data lives in `~/.vibelog`.
 
-First, run the development server:
+## Quickstart
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install -g .        # from this repo (until published as `vibelog`)
+
+vibelog start           # record real Claude Code sessions + dashboard on http://localhost:3232
+vibelog start --mock    # demo mode: 2-3 simulated agents, tokens ticking, sessions rotating
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+First run builds the dashboard once (~a minute), then serves it with `next start`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Flags: `--port=N` (default 3232), `--no-dash` (collector only).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## How it works
 
-## Learn More
+```
+vibelog start ──► collector ──► ~/.vibelog/state.json ──► /api/stream (SSE) ──► dashboard
+```
 
-To learn more about Next.js, take a look at the following resources:
+- **Real mode** tails the JSONL transcripts Claude Code already writes under `~/.claude/projects` — sessions, models, token counts, tool calls, costs at list price. A session with no writes for 2 minutes counts as finished.
+- **Mock mode** simulates a busy machine: live sessions accumulate events and tokens each tick, finish after a few minutes, and queued sessions take their slot. Indistinguishable from real data to the dashboard.
+- The dashboard (`src/app`) falls back to built-in demo data when no CLI is running, so a plain deploy (Vercel) still shows a full UI.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+CLI source: [bin/vibelog.mjs](bin/vibelog.mjs) — plain Node, zero dependencies. SSE route: [src/app/api/stream/route.ts](src/app/api/stream/route.ts). Client live layer: [src/lib/live.tsx](src/lib/live.tsx).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Development
 
-## Deploy on Vercel
+```bash
+npm run dev                          # dashboard with hot reload (port 3000)
+node bin/vibelog.mjs start --mock --no-dash   # feed it mock data
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`VIBELOG_DIR` overrides `~/.vibelog` (both CLI and dashboard) — useful for tests.

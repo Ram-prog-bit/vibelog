@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Search } from "lucide-react";
-import { SESSIONS, type SessionStatus } from "@/lib/data";
+import { type SessionStatus } from "@/lib/data";
+import { useLive } from "@/lib/live";
 import { fmtUsd, fmtTokens, fmtDuration, timeAgo } from "@/lib/format";
 import { PageHeader, Card, StatusLabel } from "@/components/ui";
 
@@ -16,12 +17,13 @@ const FILTERS: { key: SessionStatus | "all"; label: string }[] = [
 ];
 
 export function SessionsTable() {
+  const { sessions, now } = useLive();
   const [filter, setFilter] = useState<SessionStatus | "all">("all");
   const [q, setQ] = useState("");
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return SESSIONS.filter(
+    return sessions.filter(
       (s) =>
         (filter === "all" || s.status === filter) &&
         (!needle ||
@@ -30,13 +32,13 @@ export function SessionsTable() {
           s.agent.toLowerCase().includes(needle) ||
           s.model.toLowerCase().includes(needle))
     );
-  }, [filter, q]);
+  }, [sessions, filter, q]);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Sessions"
-        sub={`${SESSIONS.length} recorded on this machine`}
+        sub={`${sessions.length} recorded on this machine`}
         right={
           <label className="relative block">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3" />
@@ -111,7 +113,7 @@ export function SessionsTable() {
                   {fmtUsd(s.costUsd)}
                 </td>
                 <td className="whitespace-nowrap py-3 pl-2 pr-4 text-right font-mono text-[11px] tabular-nums text-ink-3 max-sm:hidden">
-                  {timeAgo(s.startedAt)}
+                  {timeAgo(s.startedAt, now)}
                 </td>
               </tr>
             ))}

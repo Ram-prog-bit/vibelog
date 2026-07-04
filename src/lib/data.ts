@@ -362,18 +362,59 @@ export const DAILY: DayStat[] = (() => {
   return days;
 })();
 
-export const MODEL_SPLIT = Object.keys(PRICING)
-  .map((model) => {
-    const of = SESSIONS.filter((s) => s.model === model);
-    return {
-      model,
-      sessions: of.length,
-      costUsd: of.reduce((a, s) => a + s.costUsd, 0),
-      tokens: of.reduce((a, s) => a + s.tokensIn + s.tokensOut, 0),
-    };
-  })
-  .filter((m) => m.sessions > 0)
-  .sort((a, b) => b.costUsd - a.costUsd);
+// Pure aggregates — used with live sessions from the CLI; the mock exports
+// below are these applied to (or padded for) the demo data.
+
+export function computeDaily(sessions: Session[], now: number): DayStat[] {
+  const days: DayStat[] = [];
+  const todayStart = new Date(new Date(now).toDateString()).getTime();
+  for (let d = 29; d >= 0; d--) {
+    const start = todayStart - d * DAY;
+    const inDay = sessions.filter((s) => s.startedAt >= start && s.startedAt < start + DAY);
+    days.push({
+      date: new Date(start).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      epoch: start,
+      costUsd: inDay.reduce((a, s) => a + s.costUsd, 0),
+      sessions: inDay.length,
+      tokens: inDay.reduce((a, s) => a + s.tokensIn + s.tokensOut, 0),
+      failures: inDay.filter((s) => s.status === "failed").length,
+    });
+  }
+  return days;
+}
+
+export function computeModelSplit(sessions: Session[]) {
+  const by = new Map<string, { model: string; sessions: number; costUsd: number; tokens: number }>();
+  for (const s of sessions) {
+    if (s.status === "queued") continue;
+    const m = by.get(s.model) ?? { model: s.model, sessions: 0, costUsd: 0, tokens: 0 };
+    m.sessions++;
+    m.costUsd += s.costUsd;
+    m.tokens += s.tokensIn + s.tokensOut;
+    by.set(s.model, m);
+  }
+  return [...by.values()].sort((a, b) => b.costUsd - a.costUsd);
+}
+
+export function computeToolLatency(sessions: Session[]) {
+  const by = new Map<string, number[]>();
+  for (const s of sessions)
+    for (const e of s.events)
+      if (e.kind === "tool" && e.durMs) {
+        const tool = e.label.split(" ")[0];
+        if (!by.has(tool)) by.set(tool, []);
+        by.get(tool)!.push(e.durMs);
+      }
+  const pct = (a: number[], p: number) => a[Math.min(a.length - 1, Math.floor(a.length * p))];
+  return [...by.entries()]
+    .map(([tool, ds]) => {
+      ds.sort((x, y) => x - y);
+      return { tool, p50: pct(ds, 0.5) / 1000, p95: pct(ds, 0.95) / 1000, calls: ds.length };
+    })
+    .sort((a, b) => b.calls - a.calls);
+}
+
+export const MODEL_SPLIT = computeModelSplit(SESSIONS);
 
 export const TOOL_LATENCY = [
   { tool: "Read", p50: 0.18, p95: 0.9, calls: 1841 },

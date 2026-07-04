@@ -34,7 +34,7 @@ export function Tape({
   const W = 720;
   const H = height;
   const base = H - 12;
-  const px = (at: number) => 6 + (at / durationSec) * (W - 12);
+  const px = (at: number) => 6 + (at / Math.max(1, durationSec)) * (W - 12);
 
   return (
     <div className={className}>

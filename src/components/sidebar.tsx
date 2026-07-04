@@ -9,7 +9,7 @@ import {
   Settings,
   BookOpen,
 } from "lucide-react";
-import { LIVE } from "@/lib/data";
+import { useLive } from "@/lib/live";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const NAV = [
@@ -22,6 +22,7 @@ const NAV = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const liveCount = useLive().sessions.filter((s) => s.status === "live").length;
   return (
     <aside className="sticky top-0 flex h-screen w-[218px] shrink-0 flex-col border-r border-line bg-surface max-md:hidden">
       <div className="flex items-center justify-between gap-2 px-5 pt-5 pb-6">
@@ -48,10 +49,10 @@ export function Sidebar() {
             >
               <Icon size={15} strokeWidth={1.75} />
               {label}
-              {href === "/sessions" && LIVE.length > 0 && (
+              {href === "/sessions" && liveCount > 0 && (
                 <span className="ml-auto inline-flex items-center gap-1 font-mono text-[10px] text-rec">
                   <span className="size-1 rounded-full bg-rec animate-blink" />
-                  {LIVE.length}
+                  {liveCount}
                 </span>
               )}
             </Link>

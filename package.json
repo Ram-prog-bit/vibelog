@@ -2,6 +2,9 @@
   "name": "vibelog",
   "version": "0.1.0",
   "private": true,
+  "bin": {
+    "vibelog": "bin/vibelog.mjs"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

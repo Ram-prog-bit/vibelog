@@ -18,8 +18,8 @@ export function fmtDuration(sec: number) {
   return Math.floor(m / 60) + "h " + (m % 60) + "m";
 }
 
-export function timeAgo(epoch: number) {
-  const s = Math.max(0, Math.floor((NOW - epoch) / 1000));
+export function timeAgo(epoch: number, now = NOW) {
+  const s = Math.max(0, Math.floor((now - epoch) / 1000));
   if (s < 60) return s + "s ago";
   const m = Math.floor(s / 60);
   if (m < 60) return m + "m ago";
