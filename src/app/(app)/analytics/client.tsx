@@ -2,10 +2,9 @@
 
 import Link from "next/link";
 import {
-  DAILY,
   TOOL_LATENCY,
+  TOOL_WAIT_CUTOFF_SEC,
   MOCK_SUMMARY,
-  computeDaily,
   computeModelSplit,
   computeToolLatency,
   computeSummary,
@@ -18,8 +17,7 @@ import { BarChart, Sparkline, LatencyRanges } from "@/components/charts";
 const fmtSecs = (s: number) => (s >= 10 ? s.toFixed(1) : s.toFixed(2)) + "s";
 
 export function AnalyticsClient() {
-  const { sessions, now, isLive } = useLive();
-  const daily = isLive ? computeDaily(sessions, now) : DAILY;
+  const { sessions, now, daily, isLive } = useLive();
   const modelSplit = computeModelSplit(sessions);
   const toolLatency = isLive ? computeToolLatency(sessions) : TOOL_LATENCY;
   const sum = isLive ? computeSummary(sessions, now) : MOCK_SUMMARY;
@@ -88,11 +86,12 @@ export function AnalyticsClient() {
               <p className="text-sm text-ink-2">No sessions recorded yet.</p>
             )}
             <p className="border-t border-line pt-3 text-xs text-ink-2">
-              Costs are computed from recorded token counts at list price. Set your own rates in{" "}
+              An estimate: recorded token counts priced at published list rates, which is not what a
+              subscription actually bills. The rates are in{" "}
               <Link href="/settings" className="underline underline-offset-2 hover:text-ink">
                 Settings
               </Link>
-              .
+              , edited via pricing.json.
             </p>
           </Card>
         </div>
@@ -108,8 +107,9 @@ export function AnalyticsClient() {
               <p className="text-sm text-ink-2">No tool timings recorded yet.</p>
             )}
             <p className="mt-4 border-t border-line pt-3 text-xs text-ink-2">
-              Wall-clock time per tool call, log scale. Bash usually dominates — it runs your test
-              suite, and it waits while you approve commands.
+              Wall-clock time per tool call, log scale — top 10 tools by volume. Tools whose p95
+              exceeds {TOOL_WAIT_CUTOFF_SEC}s are left out: they were waiting on you, not on a
+              model.
             </p>
           </Card>
         </div>

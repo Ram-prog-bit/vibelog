@@ -164,9 +164,11 @@ export function BarChart({
           (i % 7 === 0 && i < labels.length - 3) || i === labels.length - 1 ? (
             <text
               key={i}
-              x={i === labels.length - 1 ? W : i * bw + bw / 2}
+              // first label anchors left and last anchors right, or half the
+              // text falls outside the viewBox and gets clipped ("un 27")
+              x={i === labels.length - 1 ? W : i === 0 ? 0 : i * bw + bw / 2}
               y={H - 5}
-              textAnchor={i === labels.length - 1 ? "end" : "middle"}
+              textAnchor={i === labels.length - 1 ? "end" : i === 0 ? "start" : "middle"}
               className="fill-ink-3"
               fontSize={9}
               fontFamily="var(--font-mono)"
@@ -193,11 +195,19 @@ export function LatencyRanges({
   const x = (v: number) =>
     Math.min(100, Math.max(0, (Math.log(Math.max(v, min) / min) / Math.log(max / min)) * 100));
   const ticks = [0.1, 1, 10, 100].filter((v) => v < max * 0.7);
+  // MCP tools have very long ids (mcp__plugin_…__browser_evaluate); left
+  // unchecked they wrap to three lines and collide with the bars.
+  const short = (t: string) => (t.length > 40 ? t.slice(0, 39) + "…" : t);
   return (
     <div className="space-y-3">
       {rows.map((r) => (
-        <div key={r.tool} className="grid grid-cols-[72px_1fr_88px] items-center gap-3">
-          <div className="font-mono text-xs text-ink-2">{r.tool}</div>
+        <div
+          key={r.tool}
+          className="grid grid-cols-[minmax(0,150px)_1fr_88px] items-center gap-3"
+        >
+          <div className="truncate font-mono text-xs text-ink-2" title={r.tool}>
+            {short(r.tool)}
+          </div>
           <div className="relative h-5">
             <div className="absolute inset-y-2 left-0 right-0 rounded bg-wash" />
             <div
@@ -214,7 +224,7 @@ export function LatencyRanges({
           </div>
         </div>
       ))}
-      <div className="grid grid-cols-[72px_1fr_88px] gap-3">
+      <div className="grid grid-cols-[minmax(0,150px)_1fr_88px] gap-3">
         <div />
         <div className="relative h-4 font-mono text-[10px] text-ink-3">
           {ticks.map((v) => (

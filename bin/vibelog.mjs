@@ -416,7 +416,11 @@ function parseTranscript(file, mtimeMs) {
     const ts = e.timestamp ? Date.parse(e.timestamp) : 0;
     if (ts) {
       if (!firstTs) firstTs = ts;
-      if (prevTs) activeMs += Math.min(ts - prevTs, 300_000);
+      // Transcripts are not strictly ordered (summary lines, resumed sessions,
+      // interleaved sidechains), so a step can go backwards — without the lower
+      // clamp those negative deltas subtract real work time and activeSec ends
+      // up wildly short (measured: 52% of sessions understated, worst ~1e7x).
+      if (prevTs) activeMs += Math.max(0, Math.min(ts - prevTs, 300_000));
       prevTs = ts;
       lastTs = ts;
     }
@@ -430,7 +434,13 @@ function parseTranscript(file, mtimeMs) {
       const c = e.message?.content;
       const parts = typeof c === "string" ? [{ type: "text", text: c }] : Array.isArray(c) ? c : [];
       for (const p of parts) {
-        if (p.type === "text" && /^\[Request interrupted/i.test(p.text?.trim() ?? "")) outcome = "interrupted";
+        // The interrupt marker is bookkeeping, not a prompt — record the
+        // outcome and skip it, or it lands in the transcript and becomes the
+        // session title ("[Request interrupted by user for tool use]").
+        if (p.type === "text" && /^\[Request interrupted/i.test(p.text?.trim() ?? "")) {
+          outcome = "interrupted";
+          continue;
+        }
         if (p.type === "tool_result" && pending.has(p.tool_use_id)) {
           const t = pending.get(p.tool_use_id);
           if (ts && t.ts) t.event.durMs = Math.max(1, ts - t.ts);
@@ -492,7 +502,11 @@ function parseTranscript(file, mtimeMs) {
   return {
     phase: live ? phaseFor(events) : undefined,
     id: path.basename(file, ".jsonl").slice(0, 8),
-    title: trunc(title || summary || (cwd ? path.basename(cwd) + " session" : "Claude Code session"), 72),
+    // A transcript's own `summary` is a human-readable title, so it wins over
+    // the first-prompt heuristic. ponytail: current Claude Code builds never
+    // write a summary line (0 of 325 transcripts on this machine), so in
+    // practice this still falls through to titleFrom().
+    title: trunc(summary || title || (cwd ? path.basename(cwd) + " session" : "Claude Code session"), 72),
     agent: "claude-code",
     model,
     status,

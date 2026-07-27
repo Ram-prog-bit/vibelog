@@ -13,8 +13,17 @@
 // back to the built-in demo data (MOCK) and returns to LIVE when a CLI
 // appears. A manual toggle (useLive().setMode) overrides the automatics.
 
-import { createContext, useContext, useEffect, useState } from "react";
-import { NOW, SESSIONS, type Session } from "./data";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import {
+  DAILY,
+  NOW,
+  SESSIONS,
+  computeDaily,
+  shiftDaily,
+  shiftSessions,
+  type DayStat,
+  type Session,
+} from "./data";
 
 export interface CurrentProject {
   projectName: string;
@@ -36,6 +45,7 @@ interface Ctx {
   alive: boolean; // CLI heartbeat seen in the last 8s
   manual: Mode | null; // user's explicit toggle choice, null = automatic
   graceOver: boolean; // the 3s detection window has passed
+  clock: number; // real wall clock once mounted; NOW during prerender/hydration
   setManual: (m: Mode) => void;
 }
 
@@ -44,6 +54,7 @@ const LiveContext = createContext<Ctx>({
   alive: false,
   manual: null,
   graceOver: true,
+  clock: NOW,
   setManual: () => {},
 });
 
@@ -52,6 +63,22 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
   const [alive, setAlive] = useState(false);
   const [manual, setManual] = useState<Mode | null>(null);
   const [graceOver, setGraceOver] = useState(false);
+  // Starts at the demo anchor so server markup and the first client render
+  // match, then jumps to the real clock. Ticking keeps "3m ago" honest on a
+  // dashboard left open.
+  const [clock, setClock] = useState(NOW);
+
+  useEffect(() => {
+    // deferred, not synchronous: hydration has to finish against the anchor
+    // before the clock jumps, or the markup and the first render disagree
+    const sync = () => setClock(Date.now());
+    const first = setTimeout(sync, 0);
+    const tick = setInterval(sync, 30_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(tick);
+    };
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => setGraceOver(true), 3000);
@@ -74,26 +101,36 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <LiveContext.Provider value={{ state, alive, manual, graceOver, setManual }}>
+    <LiveContext.Provider value={{ state, alive, manual, graceOver, clock, setManual }}>
       {children}
     </LiveContext.Provider>
   );
 }
 
 export function useLive() {
-  const { state, alive, manual, graceOver, setManual } = useContext(LiveContext);
+  const { state, alive, manual, graceOver, clock, setManual } = useContext(LiveContext);
   const mode: Mode = manual ?? (alive || !graceOver ? "live" : "mock");
   // Manual LIVE shows whatever real data we have (even a stale last state);
   // automatic LIVE requires a heartbeat so a stale file never masquerades as live.
   const real = mode === "live" && (alive || manual === "live") ? state : null;
   const isLive = mode === "live" && (real !== null || manual === "live");
+
+  const shift = clock - NOW;
+  const demoSessions = useMemo(() => shiftSessions(SESSIONS, shift), [shift]);
+  const demoDaily = useMemo(() => shiftDaily(DAILY, shift), [shift]);
+
+  const now = real?.now ?? clock;
+  const sessions = real?.sessions ?? (isLive ? [] : demoSessions);
+  const daily: DayStat[] = isLive ? computeDaily(sessions, now) : demoDaily;
+
   return {
     isLive,
     mode,
     alive,
     setMode: setManual,
-    now: real?.now ?? NOW,
-    sessions: real?.sessions ?? (isLive ? [] : SESSIONS),
+    now,
+    sessions,
+    daily,
     project: real?.project ?? null,
   };
 }

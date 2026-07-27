@@ -55,8 +55,14 @@ export function dateShort(epoch: number) {
   return new Date(epoch).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+// Offset from session start. mm:ss under an hour, h:mm:ss past it — a resumed
+// session used to render as "79:08" or "1422:07", which reads as nonsense.
 export function offsetClock(sec: number) {
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+  const t = Math.max(0, Math.floor(sec));
+  const h = Math.floor(t / 3600);
+  const m = Math.floor(t / 60) % 60;
+  const s = t % 60;
+  const mm = String(m).padStart(2, "0");
+  const ss = String(s).padStart(2, "0");
+  return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }

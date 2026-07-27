@@ -53,7 +53,11 @@ function EventRow({
               </span>
             )}
           </div>
-          <p className="text-sm leading-relaxed text-ink">{e.detail}</p>
+          {/* prompts and outputs are markdown-ish; without pre-wrap the line
+              breaks collapse and rule characters run together into one line */}
+          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-ink">
+            {e.detail}
+          </p>
         </div>
       ) : (
         <div

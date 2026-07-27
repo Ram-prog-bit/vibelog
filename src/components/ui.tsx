@@ -47,6 +47,30 @@ export function TapeReel({
   );
 }
 
+// Shown whenever the dashboard is rendering built-in demo data. The mode chip
+// alone was far too quiet: a fresh install with zero recordings showed a busy,
+// fully populated dashboard that read as the user's own sessions.
+export function DemoBanner() {
+  return (
+    <div
+      role="status"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-line-2 bg-wash px-4 py-2.5"
+    >
+      <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-ink">
+        <span className="size-1.5 rounded-full bg-warn" />
+        Demo data
+      </span>
+      <span className="text-[13px] text-ink-2">
+        These sessions are simulated. Run{" "}
+        <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-xs text-ink">
+          vibelog start
+        </code>{" "}
+        to see your real ones.
+      </span>
+    </div>
+  );
+}
+
 export function PageHeader({
   title,
   sub,

@@ -6,7 +6,7 @@ import { Search, GitBranch, FolderGit2 } from "lucide-react";
 import { type Session, type SessionStatus } from "@/lib/data";
 import { useLive } from "@/lib/live";
 import { fmtUsd, fmtUsd6, fmtTokens, fmtDuration, timeAgo } from "@/lib/format";
-import { PageHeader, Card, StatusLabel } from "@/components/ui";
+import { PageHeader, Card, StatusLabel, DemoBanner } from "@/components/ui";
 
 const FILTERS: { key: SessionStatus | "all"; label: string }[] = [
   { key: "all", label: "All" },
@@ -83,7 +83,7 @@ function buildRows(sessions: Session[], group: GroupBy): Row[] {
 }
 
 export function SessionsTable() {
-  const { sessions, now } = useLive();
+  const { sessions, now, mode } = useLive();
   const [filter, setFilter] = useState<SessionStatus | "all">("all");
   const [group, setGroup] = useState<GroupBy>("session");
   const [q, setQ] = useState("");
@@ -108,6 +108,7 @@ export function SessionsTable() {
 
   return (
     <div className="space-y-6">
+      {mode === "mock" && <DemoBanner />}
       <PageHeader
         title="Sessions"
         sub={`${sessions.length} recorded on this machine · ${fmtUsd(

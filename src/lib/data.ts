@@ -5,6 +5,11 @@
 import { costOf } from "./pricing";
 export { costOf };
 
+// Generation anchor for the demo dataset. It has to be a constant: this module
+// is evaluated once per process, so on a prerendered/deployed build a live
+// `Date.now()` here would freeze at build time and disagree with every client
+// on hydration. The dashboard re-anchors the whole demo set onto the real clock
+// after mount (see live.tsx / shiftSessions), so dates on screen read as today.
 export const NOW = new Date("2026-07-03T17:42:00").getTime();
 
 export type SessionStatus = "live" | "completed" | "failed" | "queued";
@@ -375,6 +380,26 @@ export const DAILY: DayStat[] = (() => {
   return days;
 })();
 
+// Re-anchor the demo dataset onto a real clock. Called with 0 on the server and
+// during hydration (identity, so the markup matches), then with the real offset
+// once the client has mounted.
+
+export function shiftSessions(sessions: Session[], ms: number): Session[] {
+  return ms ? sessions.map((s) => ({ ...s, startedAt: s.startedAt + ms })) : sessions;
+}
+
+export function shiftDaily(days: DayStat[], ms: number): DayStat[] {
+  if (!ms) return days;
+  return days.map((d) => ({
+    ...d,
+    epoch: d.epoch + ms,
+    date: new Date(d.epoch + ms).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    }),
+  }));
+}
+
 // Pure aggregates — used with live sessions from the CLI; the mock exports
 // below are these applied to (or padded for) the demo data.
 
@@ -419,13 +444,24 @@ export function computeToolLatency(sessions: Session[]) {
         by.get(tool)!.push(e.durMs);
       }
   const pct = (a: number[], p: number) => a[Math.min(a.length - 1, Math.floor(a.length * p))];
-  return [...by.entries()]
-    .map(([tool, ds]) => {
-      ds.sort((x, y) => x - y);
-      return { tool, p50: pct(ds, 0.5) / 1000, p95: pct(ds, 0.95) / 1000, calls: ds.length };
-    })
-    .sort((a, b) => b.calls - a.calls);
+  return (
+    [...by.entries()]
+      .map(([tool, ds]) => {
+        ds.sort((x, y) => x - y);
+        return { tool, p50: pct(ds, 0.5) / 1000, p95: pct(ds, 0.95) / 1000, calls: ds.length };
+      })
+      // A tool call's duration is wall-clock until its result lands, so anything
+      // that waits on a human (AskUserQuestion measured a p95 of 11.4 hours) is
+      // not model latency and flattens the log scale for every real tool.
+      .filter((r) => r.p95 <= TOOL_WAIT_CUTOFF_SEC)
+      .sort((a, b) => b.calls - a.calls)
+      // real machines surface 30+ tools; past the top 10 by volume it's noise
+      .slice(0, 10)
+  );
 }
+
+/** p95 above this means the tool was waiting on a person, not on a model. */
+export const TOOL_WAIT_CUTOFF_SEC = 300;
 
 // nearest-rank percentile on a pre-sorted array
 function percentile(sorted: number[], p: number) {

@@ -75,7 +75,10 @@ export function MobileNav() {
   const pathname = usePathname();
   return (
     <nav className="sticky top-0 z-20 flex items-center gap-1 border-b border-line bg-surface px-3 py-2 md:hidden">
-      <div className="flex flex-1 items-center gap-1 overflow-x-auto">
+      {/* the strip scrolls past the fold on narrow phones — Settings and Docs
+          sat off-screen with nothing to say so. The fade is that affordance. */}
+      <div className="relative min-w-0 flex-1">
+        <div className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <Link href="/" className="mr-2 flex shrink-0 items-center gap-1.5 pl-1">
           <span className="grid size-4 place-items-center rounded-full border-[1.5px] border-ink">
             <span className="size-1 rounded-full bg-rec" />
@@ -96,8 +99,13 @@ export function MobileNav() {
             </Link>
           );
         })}
+        </div>
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-surface to-transparent"
+        />
       </div>
-      <ThemeToggle className="ml-2" />
+      <ThemeToggle className="ml-2 shrink-0" />
     </nav>
   );
 }

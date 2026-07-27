@@ -1,41 +1,28 @@
 "use client";
 
-import { useState } from "react";
-import { AGENTS } from "@/lib/data";
 import { PageHeader, Card } from "@/components/ui";
 import PRICING from "../../../../pricing.json";
 
-function Toggle({
-  label,
-  desc,
-  defaultOn = true,
-}: {
-  label: string;
-  desc: string;
-  defaultOn?: boolean;
-}) {
-  const [on, setOn] = useState(defaultOn);
+// Nothing on this page is wired to storage yet, so unbuilt controls say so
+// rather than pretending to hold a setting. A toggle that silently forgets is
+// worse than no toggle — "Redact secrets" in particular used to default to ON
+// while doing nothing, which misrepresented what lands in state.json.
+function Soon() {
+  return (
+    <span className="shrink-0 rounded border border-line px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ink-3">
+      coming soon
+    </span>
+  );
+}
+
+function Pending({ label, desc }: { label: string; desc: string }) {
   return (
     <div className="flex items-start justify-between gap-6 py-3.5">
       <div>
-        <div className="text-sm font-medium">{label}</div>
-        <div className="mt-0.5 text-xs text-ink-2">{desc}</div>
+        <div className="text-sm font-medium text-ink-2">{label}</div>
+        <div className="mt-0.5 text-xs text-ink-3">{desc}</div>
       </div>
-      <button
-        role="switch"
-        aria-checked={on}
-        aria-label={label}
-        onClick={() => setOn(!on)}
-        className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${
-          on ? "bg-ink" : "bg-line-2"
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 size-4 rounded-full bg-surface shadow-sm transition-transform ${
-            on ? "translate-x-[18px]" : "translate-x-0.5"
-          }`}
-        />
-      </button>
+      <Soon />
     </div>
   );
 }
@@ -60,7 +47,7 @@ const RATES = Object.entries(PRICING.models).map(([model, r]) => ({
 export function SettingsForm() {
   return (
     <div className="space-y-8">
-      <PageHeader title="Settings" sub="Everything here stays in ~/.vibelog/config.json" />
+      <PageHeader title="Settings" sub="What the recorder is doing on this machine" />
 
       <Section title="Workspace">
         <div className="flex items-center justify-between gap-6 py-3.5">
@@ -72,43 +59,25 @@ export function SettingsForm() {
             ~/.vibelog
           </code>
         </div>
-        <div className="flex items-center justify-between gap-6 py-3.5">
-          <div>
-            <div className="text-sm font-medium">Retention</div>
-            <div className="mt-0.5 text-xs text-ink-2">
-              Sessions older than this are compacted to summaries
-            </div>
-          </div>
-          <select
-            aria-label="Retention"
-            defaultValue="90"
-            className="rounded-md border border-line bg-surface px-2.5 py-1.5 text-sm focus:outline-none"
-          >
-            <option value="30">30 days</option>
-            <option value="90">90 days</option>
-            <option value="365">1 year</option>
-            <option value="0">Forever</option>
-          </select>
-        </div>
+        <Pending
+          label="Retention"
+          desc="Compact sessions older than a cutoff. Today nothing is ever compacted; the collector keeps the 200 most recent sessions from the last 30 days."
+        />
       </Section>
 
       <Section title="Recording">
-        <Toggle
-          label="Capture prompt text"
-          desc="Store the full text of every prompt, not just token counts"
+        <div className="py-3.5 text-xs leading-relaxed text-ink-2">
+          Prompt and assistant text are recorded to{" "}
+          <code className="font-mono text-ink">~/.vibelog/state.json</code> in plain text, truncated
+          to 280 characters per event. There is no redaction yet — treat that file as sensitive.
+        </div>
+        <Pending
+          label="Capture controls"
+          desc="Choose per-session whether prompt text, model output, and tool arguments are stored."
         />
-        <Toggle
-          label="Capture model output"
-          desc="Store assistant messages and reasoning summaries"
-        />
-        <Toggle
-          label="Capture tool arguments"
-          desc="Record the exact arguments passed to each tool call"
-          defaultOn={false}
-        />
-        <Toggle
+        <Pending
           label="Redact secrets"
-          desc="Scrub values that match your .env keys before anything is written to disk"
+          desc="Scrub values matching your .env keys before anything is written to disk."
         />
       </Section>
 
@@ -144,43 +113,15 @@ export function SettingsForm() {
         </div>
       </Section>
 
-      <Section title="Agents">
-        {AGENTS.map((a, i) => (
-          <div key={i} className="flex items-center justify-between gap-6 py-3.5">
-            <div>
-              <div className="font-mono text-sm">{a.name}</div>
-              <div className="mt-0.5 text-xs text-ink-2">{a.desc}</div>
-            </div>
-            <code className="rounded bg-wash px-2 py-1 font-mono text-[11px] text-ink-2">
-              {a.model}
-            </code>
-          </div>
-        ))}
-      </Section>
-
       <Section title="Data">
-        <div className="flex items-center justify-between gap-6 py-3.5">
-          <div>
-            <div className="text-sm font-medium">Export everything</div>
-            <div className="mt-0.5 text-xs text-ink-2">
-              One newline-delimited JSON file per session
-            </div>
-          </div>
-          <button className="rounded-md border border-line px-3 py-1.5 text-xs font-medium hover:bg-wash">
-            Export archive
-          </button>
-        </div>
-        <div className="flex items-center justify-between gap-6 py-3.5">
-          <div>
-            <div className="text-sm font-medium text-rec">Delete all recordings</div>
-            <div className="mt-0.5 text-xs text-ink-2">
-              Removes ~/.vibelog entirely. There is no cloud copy to restore from.
-            </div>
-          </div>
-          <button className="rounded-md border border-rec/30 px-3 py-1.5 text-xs font-medium text-rec hover:bg-rec-soft">
-            Delete…
-          </button>
-        </div>
+        <Pending
+          label="Export everything"
+          desc="One newline-delimited JSON file per session. Until then, ~/.vibelog/state.json is the whole dataset and is plain JSON."
+        />
+        <Pending
+          label="Delete all recordings"
+          desc="Until then, delete ~/.vibelog by hand. There is no cloud copy to restore from."
+        />
       </Section>
     </div>
   );

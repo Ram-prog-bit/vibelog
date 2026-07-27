@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { ArrowUpRight, FolderGit2, GitBranch } from "lucide-react";
-import { DAILY, computeDaily, type Session } from "@/lib/data";
+import { type Session } from "@/lib/data";
 import { useLive, type Mode } from "@/lib/live";
 import { fmtUsd, fmtTokens, fmtDuration, timeAgo } from "@/lib/format";
-import { PageHeader, Stat, Card, StatusLabel, TapeReel } from "@/components/ui";
+import { PageHeader, Stat, Card, StatusLabel, TapeReel, DemoBanner } from "@/components/ui";
 import { Tape } from "@/components/tape";
 import { Sparkline } from "@/components/charts";
 
@@ -41,8 +41,7 @@ function ModeToggle({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void 
 }
 
 export function MissionClient() {
-  const { sessions, now, isLive, mode, alive, setMode, project } = useLive();
-  const daily = isLive ? computeDaily(sessions, now) : DAILY;
+  const { sessions, now, daily, mode, alive, setMode, project } = useLive();
   const today = daily[daily.length - 1];
   const live = sessions.filter((s) => s.status === "live");
   const weekSessions = sessions.filter(
@@ -56,6 +55,7 @@ export function MissionClient() {
 
   return (
     <div className="space-y-8">
+      {mode === "mock" && <DemoBanner />}
       <PageHeader
         title="Mission control"
         sub={new Date(now).toLocaleDateString("en-US", {
