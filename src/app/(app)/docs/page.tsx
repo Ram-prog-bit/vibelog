@@ -14,6 +14,7 @@ const TOC = [
   ["#quickstart", "Quickstart"],
   ["#concepts", "Concepts"],
   ["#cli", "CLI reference"],
+  ["#team", "Team mode"],
   ["#format", "Data format"],
   ["#faq", "FAQ"],
 ] as const;
@@ -87,7 +88,15 @@ vibelog start --mock`}</CodeBlock>
             <CodeBlock>{`vibelog start             record Claude Code sessions + serve the dashboard
 vibelog start --mock      simulate a busy machine (demos, development)
 vibelog start --port=N    dashboard port (default 3232)
-vibelog start --no-dash   collector only, no dashboard server`}</CodeBlock>
+vibelog start --no-dash   collector only, no dashboard server
+vibelog start --host      team mode: open the dashboard to your LAN
+vibelog connect <ip>      team mode: send this machine's sessions to a host`}</CodeBlock>
+            <p>
+              Press <code className="font-mono text-ink">⌘K</code> /{" "}
+              <code className="font-mono text-ink">Ctrl+K</code> anywhere in the dashboard to
+              search every recorded session — titles, prompt text, file paths, bash commands,
+              outputs, models, and branches.
+            </p>
             <p>
               Every command reads and writes only inside{" "}
               <code className="font-mono text-ink">~/.vibelog</code>. There is no login, no
@@ -97,14 +106,43 @@ vibelog start --no-dash   collector only, no dashboard server`}</CodeBlock>
             </p>
           </section>
 
+          <section id="team" className="space-y-4 scroll-mt-8">
+            <h2>Team mode</h2>
+            <p>
+              One dashboard for every machine on your LAN. One person hosts; everyone else
+              connects. Sessions from each machine appear on the host&apos;s dashboard labeled
+              with the machine&apos;s hostname, and Mission control groups them per machine.
+            </p>
+            <CodeBlock>{`# on the machine that will show the dashboard
+vibelog start --host        # prints the address teammates should use
+
+# on every other machine
+vibelog connect 192.168.1.20`}</CodeBlock>
+            <p>
+              Still fully local: connected machines POST their session data straight to the
+              host&apos;s <code className="font-mono text-ink">/api/ingest</code> over your LAN.
+              No cloud, no accounts.
+            </p>
+            <p className="rounded-lg border border-line-2 bg-wash px-4 py-3">
+              <strong className="text-ink">Security, stated plainly:</strong> team mode has no
+              authentication in v1. While <code className="font-mono text-ink">--host</code> is
+              running, anyone who can reach that port on your network can read every recorded
+              session — prompts and outputs included — and post sessions of their own. Use it on
+              networks you trust, and never port-forward it to the internet. Without{" "}
+              <code className="font-mono text-ink">--host</code>, the dashboard binds to
+              localhost only.
+            </p>
+          </section>
+
           <section id="format" className="space-y-4 scroll-mt-8">
             <h2>Data format</h2>
             <p>
               The collector writes one JSON snapshot to{" "}
               <code className="font-mono text-ink">~/.vibelog/state.json</code>: a timestamp and an
               array of sessions, each with its events. The dashboard streams it over SSE from{" "}
-              <code className="font-mono text-ink">/api/stream</code>. The format is stable and
-              boring on purpose — you can parse it with a shell one-liner.
+              <code className="font-mono text-ink">/api/stream</code> — a full snapshot when you
+              connect, then only the sessions that changed. The file format is stable and boring
+              on purpose — you can parse it with a shell one-liner.
             </p>
             <CodeBlock>{`{"now":1783133038322,"source":"claude-code",
  "project":{"projectName":"acme-web","gitBranch":"fix/invoice-tz"},

@@ -116,10 +116,15 @@ export function SettingsForm() {
       </Section>
 
       <Section title="Data">
-        <Pending
-          label="Export everything"
-          desc="One newline-delimited JSON file per session. Until then, ~/.vibelog/state.json is the whole dataset and is plain JSON."
-        />
+        <div className="flex items-start justify-between gap-6 py-3.5">
+          <div>
+            <div className="text-sm font-medium">Export</div>
+            <div className="mt-0.5 text-xs text-ink-2">
+              CSV, JSON, or Markdown, generated in your browser — use the Export button on the
+              Sessions page (or on any session) to pick a format and date range.
+            </div>
+          </div>
+        </div>
         <Pending
           label="Delete all recordings"
           desc="Until then, delete ~/.vibelog by hand. There is no cloud copy to restore from."

@@ -57,6 +57,9 @@ export interface Session {
   // into the numbers above — the count is here so a session's total is
   // attributable rather than mysteriously large.
   subagents?: number;
+  // Team mode: the hostname of the machine that recorded this session. Absent
+  // on sessions recorded before team mode and on demo data.
+  machine?: string;
   tags: string[];
   events: SessionEvent[];
   phase?: Phase; // live sessions only

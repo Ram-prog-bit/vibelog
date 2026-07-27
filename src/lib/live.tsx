@@ -4,16 +4,18 @@
 //   - The CLI writes ~/.vibelog/state.json — { now, source, sessions } — every
 //     tick. Live sessions carry `phase` (reasoning | writing | tool) and every
 //     event a stable `seq`, so the tape can append spikes without re-animating.
-//   - /api/stream re-broadcasts it as SSE `message` frames, plus an `hb`
-//     frame each second carrying state.json's mtime. The CLI touches the file
-//     every tick, so a fresh mtime means it is actually running — a stale
-//     state.json from a previous run does not count as live.
+//   - /api/stream re-broadcasts it as SSE: a full `snapshot` frame once on
+//     connect, then `diff` frames carrying only the sessions whose content
+//     changed (plus the id order and removed ids), and an `hb` frame each
+//     second carrying state.json's mtime. The CLI touches the file every tick,
+//     so a fresh mtime means it is actually running — a stale state.json from
+//     a previous run does not count as live.
 //
 // Mode: defaults to LIVE; if no CLI is detected within 3s the dashboard falls
 // back to the built-in demo data (MOCK) and returns to LIVE when a CLI
 // appears. A manual toggle (useLive().setMode) overrides the automatics.
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   DAILY,
   NOW,
@@ -83,16 +85,44 @@ export function LiveProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Sessions live in a map between frames so a diff only replaces the entries
+  // it names; unchanged Session objects keep their identity across renders.
+  const byId = useRef(new Map<string, Session>());
+
   useEffect(() => {
     const t = setTimeout(() => setGraceOver(true), 3000);
     const es = new EventSource("/api/stream");
-    es.onmessage = (e) => {
+    es.addEventListener("snapshot", (e) => {
       try {
-        setState(JSON.parse(e.data));
+        const st = JSON.parse((e as MessageEvent).data) as LiveState;
+        byId.current = new Map((st.sessions ?? []).map((s) => [s.id, s]));
+        setState(st);
       } catch {
         // half-written frame — the next tick replaces it
       }
-    };
+    });
+    es.addEventListener("diff", (e) => {
+      try {
+        const d = JSON.parse((e as MessageEvent).data) as LiveState & {
+          order: string[];
+          changed: Session[];
+          removed: string[];
+        };
+        const map = byId.current;
+        for (const s of d.changed) map.set(s.id, s);
+        for (const id of d.removed) map.delete(id);
+        setState({
+          now: d.now,
+          source: d.source,
+          sessions: d.order.map((id) => map.get(id)).filter(Boolean) as Session[],
+          totalSessions: d.totalSessions,
+          maxSessions: d.maxSessions,
+          project: d.project,
+        });
+      } catch {
+        // half-written frame — the next tick replaces it
+      }
+    });
     es.addEventListener("hb", (e) =>
       setAlive(Number((e as MessageEvent).data) > Date.now() - 8_000)
     );

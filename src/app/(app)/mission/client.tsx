@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, FolderGit2, GitBranch } from "lucide-react";
+import { ArrowUpRight, FolderGit2, GitBranch, Monitor } from "lucide-react";
 import { type Session } from "@/lib/data";
 import { useLive, type Mode } from "@/lib/live";
 import { fmtUsd, fmtTokens, fmtDuration, timeAgo } from "@/lib/format";
-import { PageHeader, Stat, Card, StatusLabel, TapeReel, DemoBanner } from "@/components/ui";
+import { PageHeader, Stat, Card, StatusDot, StatusLabel, TapeReel, DemoBanner } from "@/components/ui";
 import { Tape } from "@/components/tape";
 import { Sparkline } from "@/components/charts";
 
@@ -52,6 +52,14 @@ export function MissionClient() {
     : 0;
   const recent = sessions.filter((s) => s.status !== "live" && s.status !== "queued").slice(0, 8);
   const queued = sessions.filter((s) => s.status === "queued");
+
+  // Team mode: sessions arrive labeled with the machine that recorded them.
+  // One machine on the air is not a team — the section appears at two.
+  const machines = new Map<string, Session[]>();
+  for (const s of sessions) {
+    const key = s.machine ?? "this machine";
+    (machines.get(key) ?? machines.set(key, []).get(key)!).push(s);
+  }
 
   return (
     <div className="space-y-8">
@@ -172,6 +180,52 @@ export function MissionClient() {
           ))}
         </div>
       </section>
+
+      {machines.size > 1 && (
+        <section>
+          <h2 className="mb-3 font-mono text-[11px] uppercase tracking-wider text-ink-3">
+            Team · {machines.size} machines
+          </h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {[...machines.entries()].map(([name, ms]) => {
+              const liveN = ms.filter((s) => s.status === "live").length;
+              return (
+                <Card key={name} className="p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="inline-flex min-w-0 items-center gap-2">
+                      <Monitor size={14} className="shrink-0 text-ink-3" />
+                      <span className="truncate font-mono text-[13px] font-medium">{name}</span>
+                    </span>
+                    {liveN > 0 && (
+                      <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-rec">
+                        <span className="size-1 rounded-full bg-rec animate-blink" />
+                        {liveN} live
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-2 font-mono text-[11px] tabular-nums text-ink-2">
+                    {ms.length} {ms.length === 1 ? "session" : "sessions"} ·{" "}
+                    {fmtUsd(ms.reduce((a, s) => a + s.costUsd, 0))} est.
+                  </div>
+                  <ul className="mt-3 space-y-1 border-t border-line pt-3">
+                    {ms.slice(0, 3).map((s) => (
+                      <li key={s.id} className="flex items-center gap-2 text-xs">
+                        <StatusDot status={s.status} />
+                        <Link
+                          href={`/sessions/${s.id}`}
+                          className="min-w-0 truncate text-ink-2 hover:text-ink hover:underline underline-offset-2"
+                        >
+                          {s.title}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
         <div>

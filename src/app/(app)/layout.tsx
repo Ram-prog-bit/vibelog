@@ -1,4 +1,5 @@
 import { Sidebar, MobileNav } from "@/components/sidebar";
+import { SearchPalette } from "@/components/search";
 import { LiveProvider } from "@/lib/live";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -11,6 +12,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <main className="mx-auto w-full max-w-6xl px-6 py-8 md:px-10">{children}</main>
         </div>
       </div>
+      <SearchPalette />
     </LiveProvider>
   );
 }

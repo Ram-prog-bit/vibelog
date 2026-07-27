@@ -84,6 +84,8 @@ let CURRENT_PROJECT = null;
 // ---------- args ----------
 
 const argv = process.argv.slice(2);
+// `vibelog connect <host-ip>` is sugar for `vibelog start --connect=<host-ip>`
+if (argv[0] === "connect" && argv[1]) argv.splice(0, 2, "start", `--connect=${argv[1]}`);
 if (argv[0] !== "start") {
   console.log(`vibelog — local dashboard for your coding agents
 
@@ -91,12 +93,24 @@ Usage:
   vibelog start            record real Claude Code sessions
   vibelog start --mock     simulate agents (demo mode)
   vibelog start --port=N   dashboard port (default 3232)
-  vibelog start --no-dash  collector only, no dashboard server`);
+  vibelog start --no-dash  collector only, no dashboard server
+  vibelog start --host     team mode: open the dashboard to your LAN so
+                           teammates' sessions show up here
+  vibelog connect <ip>     team mode: record this machine's sessions and send
+                           them to a teammate running --host (no local dashboard)
+
+Team mode is LAN-only and unauthenticated (v1): anyone who can reach the
+host's port can read every recorded session and post sessions of their own.
+Use it on networks you trust; do not expose the port to the internet.`);
   process.exit(argv.length ? 1 : 0);
 }
 const MOCK = argv.includes("--mock");
 const NO_DASH = argv.includes("--no-dash");
+const HOST = argv.includes("--host");
+// "<ip>" or "<ip>:<port>" of a machine running `vibelog start --host`
+const CONNECT = (argv.find((a) => a.startsWith("--connect=")) ?? "").split("=")[1] || "";
 const PORT = Number((argv.find((a) => a.startsWith("--port=")) ?? "").split("=")[1]) || 3232;
+const MACHINE = os.hostname();
 
 fs.mkdirSync(DIR, { recursive: true });
 
@@ -551,6 +565,7 @@ function parseTranscript(file, mtimeMs, parentId) {
     title: summary ? trunc(summary, 72) : title || (cwd ? path.basename(cwd) + " session" : "Claude Code session"),
     agent: "claude-code",
     model,
+    machine: MACHINE, // team mode: which machine recorded this
     status,
     // transcript records the branch the session actually ran on; absent or a
     // detached "HEAD" → not on a branch, so "no-branch" (matches the spec).
@@ -607,8 +622,83 @@ function collectTranscripts(dir, parentId, depth, out) {
   }
 }
 
+// ---------- team mode ----------
+//
+// One machine runs `vibelog start --host`: its dashboard binds to the LAN and
+// its /api/ingest route writes each teammate's POSTed sessions to
+// ~/.vibelog/remote/<machine>.json. The collector below merges those files
+// into state.json, so remote sessions ride the exact same pipeline as local
+// ones. Teammates run `vibelog connect <host-ip>`: a normal collector that
+// POSTs its sessions to the host each tick instead of serving a dashboard.
+// LAN-only, no auth in v1 — see the usage text.
+
+const REMOTE_DIR = path.join(DIR, "remote");
+
+// Sessions posted by teammates, labeled with their machine name. A feed whose
+// file has gone quiet past the live window is a disconnected machine — its
+// "live" sessions ended, we just never saw the end, so they close out as
+// completed (the teammate's next connect corrects the status if it wasn't).
+// ponytail: full reparse of every remote file each tick; cache by mtime if a
+// big team makes this measurable.
+function readRemoteSessions(now) {
+  const sessions = [];
+  let stamp = 0;
+  let files;
+  try {
+    files = fs.readdirSync(REMOTE_DIR).filter((f) => f.endsWith(".json"));
+  } catch {
+    return { sessions, stamp }; // no remote/ dir — nobody has ever connected
+  }
+  for (const f of files) {
+    const full = path.join(REMOTE_DIR, f);
+    try {
+      const st = fs.statSync(full);
+      stamp = Math.max(stamp, st.mtimeMs);
+      const data = JSON.parse(fs.readFileSync(full, "utf8"));
+      const stale = st.mtimeMs < now - LIVE_MS;
+      for (const s of data.sessions ?? []) {
+        s.machine = data.machine || f.replace(/\.json$/, "");
+        if (stale && s.status === "live") {
+          s.status = "completed";
+          delete s.phase;
+        }
+        sessions.push(s);
+      }
+    } catch {} // torn write or bad file — next tick retries
+  }
+  return { sessions, stamp };
+}
+
+// POST this machine's sessions to the host. Fire-and-forget with a busy flag
+// so a slow host never stacks requests; errors log once a minute, not per tick.
+let pushBusy = false;
+let lastPushErr = 0;
+async function pushToHost(sessions, totalSessions) {
+  if (pushBusy) return;
+  pushBusy = true;
+  const target = CONNECT.includes(":") ? CONNECT : `${CONNECT}:3232`;
+  try {
+    const res = await fetch(`http://${target}/api/ingest`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ machine: MACHINE, sessions, totalSessions }, (k, v) =>
+        k.startsWith("_") ? undefined : v
+      ),
+    });
+    if (!res.ok) throw new Error(`host answered ${res.status}`);
+  } catch (e) {
+    if (Date.now() - lastPushErr > 60_000) {
+      console.error(`vibelog: cannot reach host ${target} — ${e.message ?? e}`);
+      lastPushErr = Date.now();
+    }
+  } finally {
+    pushBusy = false;
+  }
+}
+
 function startReal() {
   const cache = new Map(); // file -> { mtimeMs, session }
+  let lastRemoteStamp = 0;
   const tick = () => {
     let changed = false;
     const now = Date.now();
@@ -662,12 +752,24 @@ function startReal() {
       p.subagents++;
     }
 
-    const all = [...tops.values(), ...orphans].sort((a, b) => b.startedAt - a.startedAt);
+    // teammates' sessions (host mode) merge in ahead of the sort, so the cap
+    // and the ordering treat every machine's sessions the same way
+    const remote = readRemoteSessions(now);
+    if (remote.stamp !== lastRemoteStamp) {
+      lastRemoteStamp = remote.stamp;
+      changed = true;
+    }
+    const all = [...tops.values(), ...orphans, ...remote.sessions].sort(
+      (a, b) => b.startedAt - a.startedAt
+    );
     const sessions = all.slice(0, MAX_SESSIONS);
     const anyLive = sessions.some((s) => s.status === "live");
     if (anyLive)
       for (const s of sessions)
-        if (s.status === "live") s.durationSec = Math.max(1, Math.round((now - s.startedAt) / 1000));
+        if (s.status === "live" && s.machine === MACHINE)
+          s.durationSec = Math.max(1, Math.round((now - s.startedAt) / 1000));
+    if (CONNECT && (changed || anyLive))
+      pushToHost(sessions.filter((s) => s.machine === MACHINE), all.length);
     if (changed || anyLive) writeState(sessions, "claude-code", all.length);
     else {
       // heartbeat: keep state.json's mtime fresh so the dashboard can tell
@@ -693,7 +795,10 @@ function startDashboard() {
     const r = spawnSync(process.execPath, [nextBin, "build"], { cwd: ROOT, stdio: "inherit" });
     if (r.status !== 0) process.exit(r.status ?? 1);
   }
-  const child = spawn(process.execPath, [nextBin, "start", "-p", String(PORT)], {
+  // localhost by default (nothing leaves this machine); --host opens it to the
+  // LAN for team mode — next would otherwise bind 0.0.0.0 on its own
+  const bind = HOST ? "0.0.0.0" : "127.0.0.1";
+  const child = spawn(process.execPath, [nextBin, "start", "-p", String(PORT), "-H", bind], {
     cwd: ROOT,
     stdio: ["ignore", "ignore", "inherit"],
   });
@@ -707,6 +812,15 @@ function startDashboard() {
     process.exit(0);
   });
   console.log(`vibelog: dashboard on http://localhost:${PORT}/mission`);
+  if (HOST) {
+    const ip = Object.values(os.networkInterfaces())
+      .flat()
+      .find((n) => n && n.family === "IPv4" && !n.internal)?.address;
+    console.log(
+      `vibelog: TEAM MODE — dashboard open to your LAN, no auth. Teammates run:\n` +
+        `  vibelog connect ${ip ?? "<this-machine-ip>"}${PORT === 3232 ? "" : ":" + PORT}`
+    );
+  }
 }
 
 // ---------- go ----------
@@ -722,5 +836,8 @@ if (MOCK) {
   const git = gitInfoFor(process.cwd());
   CURRENT_PROJECT = { projectName: proj.projectName, gitBranch: git.gitBranch, gitRepo: git.gitRepo };
   startReal();
+  if (CONNECT)
+    console.log(`vibelog: connected mode — sending this machine's sessions to ${CONNECT}`);
 }
-if (!NO_DASH) startDashboard();
+// connect mode is a feeder: the dashboard lives on the host machine
+if (!NO_DASH && !CONNECT) startDashboard();

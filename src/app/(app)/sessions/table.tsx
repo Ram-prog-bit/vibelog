@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Search, GitBranch, FolderGit2 } from "lucide-react";
 import { type Session, type SessionStatus } from "@/lib/data";
 import { useLive } from "@/lib/live";
+import { sessionMatches } from "@/lib/search";
 import { fmtUsd, fmtUsd6, fmtTokens, fmtDuration, timeAgo } from "@/lib/format";
 import { PageHeader, Card, StatusLabel, DemoBanner } from "@/components/ui";
+import { ExportButton } from "@/components/export";
 
 const FILTERS: { key: SessionStatus | "all"; label: string }[] = [
   { key: "all", label: "All" },
@@ -87,24 +89,23 @@ export function SessionsTable() {
   const [filter, setFilter] = useState<SessionStatus | "all">("all");
   const [group, setGroup] = useState<GroupBy>("session");
   const [q, setQ] = useState("");
+  // full-text matching runs on the debounced value so fast typing scans once
+  const [dq, setDq] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDq(q), 300);
+    return () => clearTimeout(t);
+  }, [q]);
 
   const rows = useMemo(() => {
-    const needle = q.trim().toLowerCase();
     const filtered = sessions.filter(
-      (s) =>
-        (filter === "all" || s.status === filter) &&
-        (!needle ||
-          s.title.toLowerCase().includes(needle) ||
-          s.id.toLowerCase().includes(needle) ||
-          s.agent.toLowerCase().includes(needle) ||
-          s.model.toLowerCase().includes(needle) ||
-          (s.gitBranch ?? "").toLowerCase().includes(needle) ||
-          (s.projectName ?? "").toLowerCase().includes(needle))
+      (s) => (filter === "all" || s.status === filter) && sessionMatches(s, dq)
     );
     return buildRows(filtered, group);
-  }, [sessions, filter, q, group]);
+  }, [sessions, filter, dq, group]);
 
   const sessionCount = rows.filter((r) => r.kind === "session").length;
+  // machine labels only earn a column-inch once a second machine shows up
+  const multiMachine = new Set(sessions.map((s) => s.machine ?? "")).size > 1;
 
   return (
     <div className="space-y-6">
@@ -117,16 +118,19 @@ export function SessionsTable() {
           sessions.reduce((a, s) => a + s.costUsd, 0)
         )} est. across them`}
         right={
-          <label className="relative block">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3" />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search title, id, model, branch…"
-              aria-label="Search sessions"
-              className="w-60 rounded-md border border-line bg-surface py-1.5 pl-8 pr-3 text-[13px] placeholder:text-ink-3 focus:border-line-2 focus:outline-none"
-            />
-          </label>
+          <span className="flex items-center gap-2">
+            <label className="relative block">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3" />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search prompts, files, commands…"
+                aria-label="Search sessions"
+                className="w-60 rounded-md border border-line bg-surface py-1.5 pl-8 pr-3 text-[13px] placeholder:text-ink-3 focus:border-line-2 focus:outline-none"
+              />
+            </label>
+            <ExportButton sessions={sessions} />
+          </span>
         }
       />
 
@@ -220,6 +224,7 @@ export function SessionsTable() {
                       <span className="mt-0.5 block truncate font-mono text-[11px] text-ink-3">
                         {r.s.id} · {r.s.gitBranch || "no-branch"}
                         {r.s.subagents ? ` · +${r.s.subagents} subagents` : ""}
+                        {multiMachine && r.s.machine ? ` · ${r.s.machine}` : ""}
                       </span>
                     </Link>
                   </td>

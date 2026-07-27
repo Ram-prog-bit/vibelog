@@ -8,6 +8,7 @@ import { type SessionEvent } from "@/lib/data";
 import { useLive } from "@/lib/live";
 import { fmtUsd6, fmtTokens, fmtDuration, offsetClock, timeAgo } from "@/lib/format";
 import { Card, Stat, StatusLabel, TapeReel } from "@/components/ui";
+import { ExportButton } from "@/components/export";
 import { Tape } from "@/components/tape";
 
 function EventRow({
@@ -145,11 +146,15 @@ function SessionView({ id }: { id: string }) {
           <div>
             <h1 className="text-[22px] font-semibold tracking-tight">{s.title}</h1>
             <div className="mt-1.5 font-mono text-[11px] text-ink-3">
-              {s.id} · {s.agent} · {s.model} · {s.projectName ? s.projectName + " · " : ""}
+              {s.id} · {s.agent} · {s.model} · {s.machine ? s.machine + " · " : ""}
+              {s.projectName ? s.projectName + " · " : ""}
               {s.gitBranch} · started {timeAgo(s.startedAt, now)}
             </div>
           </div>
-          <StatusLabel status={s.status} />
+          <span className="flex items-center gap-3">
+            <StatusLabel status={s.status} />
+            <ExportButton sessions={[s]} single />
+          </span>
         </div>
       </div>
 
