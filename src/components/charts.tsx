@@ -23,8 +23,12 @@ export interface Tip {
 function TipBox({ tip }: { tip: Tip | null }) {
   if (!tip) return null;
   return (
+    // No -translate-y-full here: Tailwind v4 compiles it to the `translate`
+    // property, which composes with the inline `transform` below instead of
+    // being overridden by it — the tip ended up a full box-height too high,
+    // floating clear of the chart and over whatever card sat above it.
     <div
-      className="pointer-events-none absolute -top-1 z-10 -translate-y-full rounded-md border border-line bg-surface px-2.5 py-1.5 shadow-sm"
+      className="pointer-events-none absolute -top-1 z-10 rounded-md border border-line bg-surface px-2.5 py-1.5 shadow-sm"
       style={{
         left: `${tip.x * 100}%`,
         transform: `translate(${tip.x > 0.8 ? "-100%" : tip.x < 0.2 ? "0" : "-50%"}, -100%)`,
@@ -51,6 +55,10 @@ export function Sparkline({
 }) {
   const [tip, setTip] = useState<Tip | null>(null);
   const [idx, setIdx] = useState<number | null>(null);
+  // preserveAspectRatio="none" stretches x independently of y, so a circle
+  // drawn in user units renders as an ellipse. Track the render width and
+  // squeeze the marker's rx back by the same factor.
+  const [renderW, setRenderW] = useState(0);
   const W = 400;
   const H = height;
   const max = Math.max(...points) * 1.1 || 1;
@@ -75,6 +83,7 @@ export function Sparkline({
           const r = e.currentTarget.getBoundingClientRect();
           const i = Math.round(((e.clientX - r.left) / r.width) * (points.length - 1));
           const c = Math.max(0, Math.min(points.length - 1, i));
+          setRenderW(r.width);
           setIdx(c);
           setTip({ x: c / (points.length - 1), title: labels[c], value: FMTS[fmt](points[c]) });
         }}
@@ -92,7 +101,16 @@ export function Sparkline({
         )}
         <path d={d} fill="none" stroke="var(--color-ink)" strokeWidth={1.75} vectorEffect="non-scaling-stroke" />
         {idx !== null && (
-          <circle cx={px(idx)} cy={py(points[idx])} r={3.5} fill="var(--color-ink)" stroke="var(--color-surface)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+          <ellipse
+            cx={px(idx)}
+            cy={py(points[idx])}
+            rx={3.5 * (renderW ? W / renderW : 1)}
+            ry={3.5}
+            fill="var(--color-ink)"
+            stroke="var(--color-surface)"
+            strokeWidth={2}
+            vectorEffect="non-scaling-stroke"
+          />
         )}
       </svg>
     </div>
@@ -114,25 +132,47 @@ export function BarChart({
   const [idx, setIdx] = useState<number | null>(null);
   const W = 600;
   const H = height;
-  const pad = { t: 8, b: 18 };
+  const pad = { t: 14, b: 6 };
   const max = Math.max(...points) * 1.08 || 1;
   const bw = W / points.length;
   const py = (v: number) => pad.t + (1 - v / max) * (H - pad.t - pad.b);
   const grid = [0.5, 1].map((f) => max * f * 0.9);
+  // The viewBox scales to fill the container, so anything drawn inside it in
+  // user units scales too: SVG <text> at fontSize 9 read as 15px at 1440 and
+  // 5px at 390. Axis labels are HTML positioned by percentage instead — same
+  // place at every width, always the size they say they are.
+  const pct = (v: number) => `${(py(v) / H) * 100}%`;
+  const showLabel = (i: number) =>
+    (i % 7 === 0 && i < labels.length - 3) || i === labels.length - 1;
 
   return (
     <div className="relative">
       <TipBox tip={tip} />
+      {/* own stacking context so the % offsets below track the plot, not the
+          plot plus the date row underneath it */}
+      <div className="relative">
       <svg viewBox={`0 0 ${W} ${H}`} className="block w-full">
         {grid.map((g) => (
-          <g key={g}>
-            <line x1={0} x2={W} y1={py(g)} y2={py(g)} stroke="var(--color-line)" strokeWidth={1} />
-            <text x={0} y={py(g) - 4} className="fill-ink-3" fontSize={9} fontFamily="var(--font-mono)">
-              {FMTS[fmt](g)}
-            </text>
-          </g>
+          <line
+            key={g}
+            x1={0}
+            x2={W}
+            y1={py(g)}
+            y2={py(g)}
+            stroke="var(--color-line)"
+            strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
+          />
         ))}
-        <line x1={0} x2={W} y1={H - pad.b} y2={H - pad.b} stroke="var(--color-line-2)" strokeWidth={1} />
+        <line
+          x1={0}
+          x2={W}
+          y1={H - pad.b}
+          y2={H - pad.b}
+          stroke="var(--color-line-2)"
+          strokeWidth={1}
+          vectorEffect="non-scaling-stroke"
+        />
         {points.map((v, i) => (
           <g key={i}>
             <rect
@@ -160,24 +200,40 @@ export function BarChart({
             />
           </g>
         ))}
+      </svg>
+      {grid.map((g) => (
+        <span
+          key={g}
+          className="pointer-events-none absolute left-0 -translate-y-full pb-0.5 font-mono text-[10px] text-ink-3"
+          style={{ top: pct(g) }}
+        >
+          {FMTS[fmt](g)}
+        </span>
+      ))}
+      </div>
+      <div className="relative mt-1 h-3.5 font-mono text-[10px] text-ink-3">
         {labels.map((l, i) =>
-          (i % 7 === 0 && i < labels.length - 3) || i === labels.length - 1 ? (
-            <text
+          showLabel(i) ? (
+            <span
               key={i}
-              // first label anchors left and last anchors right, or half the
-              // text falls outside the viewBox and gets clipped ("un 27")
-              x={i === labels.length - 1 ? W : i === 0 ? 0 : i * bw + bw / 2}
-              y={H - 5}
-              textAnchor={i === labels.length - 1 ? "end" : i === 0 ? "start" : "middle"}
-              className="fill-ink-3"
-              fontSize={9}
-              fontFamily="var(--font-mono)"
+              // first label anchors left and last anchors right, or half of it
+              // falls outside the container and gets clipped ("un 27")
+              className="absolute whitespace-nowrap"
+              style={{
+                left: `${((i + 0.5) / points.length) * 100}%`,
+                transform:
+                  i === labels.length - 1
+                    ? "translateX(-100%)"
+                    : i === 0
+                      ? "translateX(0)"
+                      : "translateX(-50%)",
+              }}
             >
               {l}
-            </text>
+            </span>
           ) : null
         )}
-      </svg>
+      </div>
     </div>
   );
 }
@@ -189,12 +245,18 @@ export function LatencyRanges({
   rows: { tool: string; p50: number; p95: number; calls: number }[];
 }) {
   // log scale sized to the data — real p95s range from 0.04s (Read) to minutes
-  // (Bash waiting on a test suite), so fixed bounds clip both ends
-  const min = 0.02;
-  const max = Math.max(20, ...rows.map((r) => r.p95)) * 1.15;
+  // (Bash waiting on a test suite), so fixed bounds clip both ends. The upper
+  // bound tracks the data: a hard 20s floor spent 60% of the axis on empty
+  // decades whenever the slowest tool was quick, squeezing every range into an
+  // unreadable sliver at the right edge.
+  // Both bounds track the data. Fixed ones (0.02s–20s) spent most of the axis
+  // on empty decades: every range collapsed into a sliver at one edge.
+  const lo = Math.min(1, ...rows.map((r) => r.p50));
+  const min = Math.max(0.01, lo / 2.5);
+  const max = Math.max(1, ...rows.map((r) => r.p95)) * 1.15;
   const x = (v: number) =>
     Math.min(100, Math.max(0, (Math.log(Math.max(v, min) / min) / Math.log(max / min)) * 100));
-  const ticks = [0.1, 1, 10, 100].filter((v) => v < max * 0.7);
+  const ticks = [0.1, 1, 10, 100].filter((v) => v > min && v < max * 0.7);
   // MCP tools have very long ids (mcp__plugin_…__browser_evaluate); left
   // unchecked they wrap to three lines and collide with the bars.
   const short = (t: string) => (t.length > 40 ? t.slice(0, 39) + "…" : t);
@@ -203,7 +265,7 @@ export function LatencyRanges({
       {rows.map((r) => (
         <div
           key={r.tool}
-          className="grid grid-cols-[minmax(0,150px)_1fr_88px] items-center gap-3"
+          className="grid grid-cols-[minmax(0,84px)_1fr_76px] items-center gap-2 sm:grid-cols-[minmax(0,150px)_1fr_88px] sm:gap-3"
         >
           <div className="truncate font-mono text-xs text-ink-2" title={r.tool}>
             {short(r.tool)}
@@ -224,11 +286,26 @@ export function LatencyRanges({
           </div>
         </div>
       ))}
-      <div className="grid grid-cols-[minmax(0,150px)_1fr_88px] gap-3">
+      <div className="grid grid-cols-[minmax(0,84px)_1fr_76px] gap-2 sm:grid-cols-[minmax(0,150px)_1fr_88px] sm:gap-3">
         <div />
         <div className="relative h-4 font-mono text-[10px] text-ink-3">
-          {ticks.map((v) => (
-            <span key={v} className="absolute" style={{ left: `${x(v)}%` }}>
+          {/* centred on the tick, except the outermost pair — left-anchored at
+              0% and right-anchored at 100% they stay inside the track instead
+              of running into their neighbour ("0.1s10s" at 390px) */}
+          {ticks.map((v, i) => (
+            <span
+              key={v}
+              className="absolute whitespace-nowrap"
+              style={{
+                left: `${x(v)}%`,
+                transform:
+                  i === ticks.length - 1 && x(v) > 90
+                    ? "translateX(-100%)"
+                    : x(v) < 5
+                      ? "translateX(0)"
+                      : "translateX(-50%)",
+              }}
+            >
               {v}s
             </span>
           ))}

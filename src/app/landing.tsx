@@ -116,6 +116,7 @@ function HeroTape() {
         <div className="flex items-center gap-3 font-mono text-[11px] text-ink-3">
           <span className="inline-flex items-center gap-1.5 uppercase tracking-wider text-rec">
             <motion.span
+              data-reveal
               className="size-1.5 rounded-full bg-rec"
               animate={{ opacity: [1, 0.2, 1] }}
               transition={{ duration: 1.6, repeat: Infinity }}
@@ -148,6 +149,7 @@ function HeroTape() {
           return (
             <motion.line
               key={i}
+              data-reveal
               x1={x}
               x2={x}
               y1={base}
@@ -163,6 +165,7 @@ function HeroTape() {
           );
         })}
         <motion.g
+          data-reveal
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 + HERO_EVENTS.length * 0.09, duration: 0.4 }}
@@ -192,6 +195,7 @@ function HeroTape() {
 function Reveal({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <motion.div
+      data-reveal
       className={className}
       initial={{ opacity: 0, y: 16 }}
       whileInView={{ opacity: 1, y: 0 }}
@@ -233,6 +237,7 @@ export function Landing() {
       {/* hero */}
       <header className="mx-auto max-w-5xl px-6 pt-6 pb-20 md:pt-10">
         <motion.p
+          data-reveal
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
@@ -241,6 +246,7 @@ export function Landing() {
           Local-first agent tracking
         </motion.p>
         <motion.h1
+          data-reveal
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55, delay: 0.08 }}
@@ -250,6 +256,7 @@ export function Landing() {
           <em className="font-serif font-normal italic tracking-normal">on the record</em>.
         </motion.h1>
         <motion.p
+          data-reveal
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55, delay: 0.16 }}
@@ -259,6 +266,7 @@ export function Landing() {
           disk, and makes it readable. A flight recorder for the work you delegate.
         </motion.p>
         <motion.div
+          data-reveal
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55, delay: 0.24 }}
@@ -276,6 +284,7 @@ export function Landing() {
         </motion.div>
 
         <motion.div
+          data-reveal
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.35 }}

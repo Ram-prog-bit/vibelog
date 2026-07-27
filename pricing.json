@@ -1,13 +1,21 @@
 {
-  "_comment": "Single source of truth for model pricing. Add a model = add one line under models. $ per million tokens (list price). Matched by model-id prefix, most specific first. Cache reads billed at cacheReadMultiplier x input; cache writes at cacheWriteMultiplier x input.",
+  "_comment": "Single source of truth for model pricing. Add a model = add one line under models. $ per million tokens (list price). Matched by model-id prefix, most specific first (object key order is the match order). Cache reads bill at cacheReadMultiplier x input; cache writes bill by TTL via cacheWrite.",
+  "_source": "https://platform.claude.com/docs/en/about-claude/pricing — verified 2026-07-27",
   "cacheReadMultiplier": 0.1,
-  "cacheWriteMultiplier": 1.25,
+  "_cacheWriteComment": "Cache writes bill by the TTL requested on the cache_control block: 1h = 2x input, 5m = 1.25x. Transcripts report the split under usage.cache_creation; when only the flat cache_creation_input_tokens is present the collector bills it at the 5m rate (the API default TTL).",
+  "cacheWrite": { "1h": 2, "5m": 1.25 },
+  "_tiersComment": "Optional per-model long-context tiers: [{ \"above\": <input tokens>, \"in\": <mult>, \"out\": <mult> }], applied when a message's total input tokens exceed `above`. Every model below is deliberately tier-free: Claude 4.6 and later include the full 1M-token context window at standard pricing (a 900k-token request bills at the same per-token rate as a 9k one). Do not add a speculative tier — an invented multiplier overstates cost just as badly as a missing one understates it.",
   "models": {
-    "claude-fable-5":  { "in": 20, "out": 90 },
-    "claude-opus-4-8": { "in": 15, "out": 75 },
-    "claude-opus":     { "in": 15, "out": 75 },
-    "claude-sonnet":   { "in": 3,  "out": 15 },
-    "claude-haiku":    { "in": 1,  "out": 5 }
+    "claude-fable-5":   { "in": 10, "out": 50 },
+    "claude-mythos-5":  { "in": 10, "out": 50 },
+    "claude-opus-4-1":  { "in": 15, "out": 75 },
+    "claude-opus-4-0":  { "in": 15, "out": 75 },
+    "claude-opus":      { "in": 5,  "out": 25 },
+    "claude-sonnet-5":  { "in": 2,  "out": 10 },
+    "claude-sonnet":    { "in": 3,  "out": 15 },
+    "claude-haiku":     { "in": 1,  "out": 5 }
   },
+  "_sonnet5Intro": "claude-sonnet-5 is on introductory pricing ($2/$10) through 2026-08-31; it reverts to $3/$15 on 2026-09-01. bin/pricing.check.mjs fails once that date passes so the rate cannot go stale silently.",
+  "sonnet5IntroEndsOn": "2026-08-31",
   "fallback": "claude-sonnet"
 }

@@ -7,7 +7,9 @@
   --color-paper: #f7f7f5;
   --color-surface: #ffffff;
   --color-ink: #1a1a1c;
-  --color-ink-2: #55555c;
+  /* true neutral, not a cool grey: at 12px an underlined #55555c link reads as
+     blue, and subpixel antialiasing makes it worse. Same lightness, no bias. */
+  --color-ink-2: #575757;
   --color-ink-3: #8b8b92;
   --color-line: #e6e6e2;
   --color-line-2: #d8d8d3;
@@ -44,7 +46,7 @@
   --color-paper: #101012;
   --color-surface: #18181b;
   --color-ink: #f0f0ee;
-  --color-ink-2: #a6a6ac;
+  --color-ink-2: #a8a8a8;
   --color-ink-3: #6c6c73;
   --color-line: #29292d;
   --color-line-2: #38383e;
@@ -60,6 +62,15 @@
 
   --color-code-bg: #08090a;
   --color-code-fg: #ececeb;
+}
+
+/* Motion gate. Elements that animate in are marked [data-reveal]; until the
+   inline script in layout.tsx sets data-motion="on" (i.e. scripting is off, or
+   the bundle never arrived) they render at their final state instead of the
+   opacity:0 SSR markup motion emits. */
+html:not([data-motion="on"]) [data-reveal] {
+  opacity: 1 !important;
+  transform: none !important;
 }
 
 /* live tape: each event line draws itself in from the baseline (pathLength=1

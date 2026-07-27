@@ -85,8 +85,10 @@ export function SettingsForm() {
         <div className="py-3.5">
           <div className="mb-3 text-xs text-ink-2">
             Rates in USD per million tokens, from pricing.json — used everywhere a cost is shown.
-            Cache reads bill at {PRICING.cacheReadMultiplier}× input; cache writes at{" "}
-            {PRICING.cacheWriteMultiplier}× input.
+            Cache reads bill at {PRICING.cacheReadMultiplier}× input; cache writes bill by TTL, at{" "}
+            {PRICING.cacheWrite["1h"]}× input for a 1-hour cache and {PRICING.cacheWrite["5m"]}× for
+            a 5-minute one. These are published list rates — a Max or Pro subscription does not bill
+            this way, so every cost in the dashboard is an estimate.
           </div>
           <table className="w-full text-sm">
             <thead>

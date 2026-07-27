@@ -35,6 +35,9 @@ export interface LiveState {
   now: number;
   source: "mock" | "claude-code";
   sessions: Session[];
+  /** sessions on disk in the window, before the cap `sessions` was sliced to */
+  totalSessions?: number;
+  maxSessions?: number;
   project?: CurrentProject | null; // the dir vibelog was started in
 }
 
@@ -126,11 +129,19 @@ export function useLive() {
   return {
     isLive,
     mode,
+    // Everything on screen is simulated: either the built-in demo set, or a
+    // CLI running `vibelog start --mock`. The second case used to show fake
+    // sessions and fake money under a LIVE chip with no warning at all.
+    isDemo: mode === "mock" || real?.source === "mock",
     alive,
     setMode: setManual,
     now,
     sessions,
     daily,
+    // What the CLI actually holds vs what it sent. The dashboard shows the
+    // newest `sessions.length` of `totalSessions`; when they differ, the pages
+    // say so rather than presenting a capped list as a complete one.
+    totalSessions: real?.totalSessions ?? sessions.length,
     project: real?.project ?? null,
   };
 }

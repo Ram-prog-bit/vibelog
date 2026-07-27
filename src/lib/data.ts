@@ -53,6 +53,10 @@ export interface Session {
   costUsd: number;
   toolCalls: number;
   filesTouched: number;
+  // Subagent transcripts this session spawned. Their cost and tokens are rolled
+  // into the numbers above — the count is here so a session's total is
+  // attributable rather than mysteriously large.
+  subagents?: number;
   tags: string[];
   events: SessionEvent[];
   phase?: Phase; // live sessions only
@@ -434,7 +438,10 @@ export function computeModelSplit(sessions: Session[]) {
   return [...by.values()].sort((a, b) => b.costUsd - a.costUsd);
 }
 
-export function computeToolLatency(sessions: Session[]) {
+// Per-tool timings with the human-wait tools already dropped. One function so
+// the latency panel and the headline p50/p95 tile can never disagree about
+// which calls count.
+function toolStats(sessions: Session[]) {
   const by = new Map<string, number[]>();
   for (const s of sessions)
     for (const e of s.events)
@@ -443,21 +450,31 @@ export function computeToolLatency(sessions: Session[]) {
         if (!by.has(tool)) by.set(tool, []);
         by.get(tool)!.push(e.durMs);
       }
-  const pct = (a: number[], p: number) => a[Math.min(a.length - 1, Math.floor(a.length * p))];
   return (
     [...by.entries()]
       .map(([tool, ds]) => {
         ds.sort((x, y) => x - y);
-        return { tool, p50: pct(ds, 0.5) / 1000, p95: pct(ds, 0.95) / 1000, calls: ds.length };
+        return {
+          tool,
+          durs: ds,
+          p50: percentile(ds, 0.5) / 1000,
+          p95: percentile(ds, 0.95) / 1000,
+          calls: ds.length,
+        };
       })
       // A tool call's duration is wall-clock until its result lands, so anything
       // that waits on a human (AskUserQuestion measured a p95 of 11.4 hours) is
       // not model latency and flattens the log scale for every real tool.
       .filter((r) => r.p95 <= TOOL_WAIT_CUTOFF_SEC)
-      .sort((a, b) => b.calls - a.calls)
-      // real machines surface 30+ tools; past the top 10 by volume it's noise
-      .slice(0, 10)
   );
+}
+
+export function computeToolLatency(sessions: Session[]) {
+  return toolStats(sessions)
+    .sort((a, b) => b.calls - a.calls)
+    // real machines surface 30+ tools; past the top 10 by volume it's noise
+    .slice(0, 10)
+    .map(({ tool, p50, p95, calls }) => ({ tool, p50, p95, calls }));
 }
 
 /** p95 above this means the tool was waiting on a person, not on a model. */
@@ -492,10 +509,10 @@ export function computeSummary(sessions: Session[], now: number): Summary {
   const finished = inWindow.filter((s) => s.status === "completed" || s.status === "failed");
   const failed = finished.filter((s) => s.status === "failed").length;
 
-  const durs = inWindow
-    .flatMap((s) => s.events)
-    .filter((e) => e.kind === "tool" && e.durMs)
-    .map((e) => e.durMs!)
+  // Same set the latency panel charts — human-wait tools excluded — or the
+  // tile reads minutes while the panel under it reads seconds.
+  const durs = toolStats(inWindow)
+    .flatMap((r) => r.durs)
     .sort((a, b) => a - b);
 
   return {

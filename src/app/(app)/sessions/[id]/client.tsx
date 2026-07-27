@@ -165,7 +165,11 @@ function SessionView({ id }: { id: string }) {
       </Card>
 
       <section className="grid grid-cols-2 gap-6 border-b border-line pb-8 lg:grid-cols-5">
-        <Stat label="Cost" value={fmtUsd6(s.costUsd)} />
+        <Stat
+          label="Cost"
+          value={`${fmtUsd6(s.costUsd)} est.`}
+          hint={s.subagents ? `list price · incl. ${s.subagents} subagents` : "list price"}
+        />
         <Stat label="Duration" value={fmtDuration(elapsed)} hint={wallHint} />
         <Stat label="Tokens in" value={fmtTokens(s.tokensIn)} hint="cache reads included" />
         <Stat label="Tokens out" value={fmtTokens(s.tokensOut)} />

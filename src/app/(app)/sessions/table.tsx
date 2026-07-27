@@ -83,7 +83,7 @@ function buildRows(sessions: Session[], group: GroupBy): Row[] {
 }
 
 export function SessionsTable() {
-  const { sessions, now, mode } = useLive();
+  const { sessions, totalSessions, now, isDemo } = useLive();
   const [filter, setFilter] = useState<SessionStatus | "all">("all");
   const [group, setGroup] = useState<GroupBy>("session");
   const [q, setQ] = useState("");
@@ -108,12 +108,14 @@ export function SessionsTable() {
 
   return (
     <div className="space-y-6">
-      {mode === "mock" && <DemoBanner />}
+      {isDemo && <DemoBanner />}
       <PageHeader
         title="Sessions"
-        sub={`${sessions.length} recorded on this machine · ${fmtUsd(
+        sub={`showing last ${sessions.length}${
+          totalSessions > sessions.length ? ` of ${totalSessions}` : ""
+        } sessions · ${fmtUsd(
           sessions.reduce((a, s) => a + s.costUsd, 0)
-        )} all time`}
+        )} est. across them`}
         right={
           <label className="relative block">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3" />
@@ -217,6 +219,7 @@ export function SessionsTable() {
                       </span>
                       <span className="mt-0.5 block truncate font-mono text-[11px] text-ink-3">
                         {r.s.id} · {r.s.gitBranch || "no-branch"}
+                        {r.s.subagents ? ` · +${r.s.subagents} subagents` : ""}
                       </span>
                     </Link>
                   </td>
@@ -249,6 +252,15 @@ export function SessionsTable() {
           </tbody>
         </table>
       </Card>
+
+      <p className="text-xs leading-relaxed text-ink-2">
+        What this list leaves out: only transcripts written in the last 30 days are read, and
+        of those only the newest {sessions.length} sessions are sent to the dashboard
+        {totalSessions > sessions.length ? ` — ${totalSessions - sessions.length} older ones are not shown` : ""}.
+        Each session&apos;s cost and tokens include the subagents it spawned. Costs are an
+        estimate: recorded tokens priced at published list rates, which is not what a Max or Pro
+        subscription bills.
+      </p>
     </div>
   );
 }

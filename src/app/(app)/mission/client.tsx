@@ -41,7 +41,7 @@ function ModeToggle({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void 
 }
 
 export function MissionClient() {
-  const { sessions, now, daily, mode, alive, setMode, project } = useLive();
+  const { sessions, now, daily, mode, isDemo, alive, setMode, project } = useLive();
   const today = daily[daily.length - 1];
   const live = sessions.filter((s) => s.status === "live");
   const weekSessions = sessions.filter(
@@ -55,7 +55,7 @@ export function MissionClient() {
 
   return (
     <div className="space-y-8">
-      {mode === "mock" && <DemoBanner />}
+      {isDemo && <DemoBanner />}
       <PageHeader
         title="Mission control"
         sub={new Date(now).toLocaleDateString("en-US", {
@@ -92,7 +92,11 @@ export function MissionClient() {
       />
 
       <section className="grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-4">
-        <Stat label="Spend today" value={fmtUsd(today.costUsd)} hint="across all agents" />
+        <Stat
+          label="Spend today"
+          value={`${fmtUsd(today.costUsd)} est.`}
+          hint="all agents · list-price estimate"
+        />
         <Stat label="Sessions today" value={String(today.sessions)} hint={`${queued.length} queued`} />
         <Stat label="Tokens today" value={fmtTokens(today.tokens)} hint="in + out" />
         <Stat label="Failure rate" value={failRate.toFixed(1) + "%"} hint="last 7 days" />
@@ -201,7 +205,9 @@ export function MissionClient() {
                     <td className="whitespace-nowrap px-2 py-2.5 text-right font-mono text-[11px] tabular-nums text-ink-3">
                       {fmtUsd(s.costUsd)}
                     </td>
-                    <td className="whitespace-nowrap py-2.5 pl-2 pr-4 text-right font-mono text-[11px] tabular-nums text-ink-3">
+                    {/* on a 320px card status + cost + age left the title ~90px
+                        ("Refactor feat…"); age is the least useful of the three */}
+                    <td className="whitespace-nowrap py-2.5 pl-2 pr-4 text-right font-mono text-[11px] tabular-nums text-ink-3 max-sm:hidden">
                       {timeAgo(s.startedAt, now)}
                     </td>
                   </tr>
@@ -220,7 +226,7 @@ export function MissionClient() {
 
         <div className="space-y-4">
           <h2 className="font-mono text-[11px] uppercase tracking-wider text-ink-3">
-            Spend, last 30 days
+            Spend, last 30 days (est.)
           </h2>
           <Card className="p-4">
             <Sparkline

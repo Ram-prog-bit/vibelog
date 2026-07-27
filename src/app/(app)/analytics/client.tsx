@@ -11,13 +11,13 @@ import {
 } from "@/lib/data";
 import { useLive } from "@/lib/live";
 import { fmtUsd, fmtUsd6, fmtTokens, fmtPct } from "@/lib/format";
-import { PageHeader, Stat, Card } from "@/components/ui";
+import { PageHeader, Stat, Card, DemoBanner } from "@/components/ui";
 import { BarChart, Sparkline, LatencyRanges } from "@/components/charts";
 
 const fmtSecs = (s: number) => (s >= 10 ? s.toFixed(1) : s.toFixed(2)) + "s";
 
 export function AnalyticsClient() {
-  const { sessions, now, daily, isLive } = useLive();
+  const { sessions, totalSessions, now, daily, isLive, isDemo } = useLive();
   const modelSplit = computeModelSplit(sessions);
   const toolLatency = isLive ? computeToolLatency(sessions) : TOOL_LATENCY;
   const sum = isLive ? computeSummary(sessions, now) : MOCK_SUMMARY;
@@ -25,13 +25,22 @@ export function AnalyticsClient() {
 
   return (
     <div className="space-y-8">
+      {isDemo && <DemoBanner />}
       <PageHeader
         title="Analytics"
-        sub="Cost and performance across every agent on this machine · last 30 days"
+        sub={`Cost and performance across every agent on this machine · last 30 days${
+          totalSessions > sessions.length
+            ? ` · newest ${sessions.length} of ${totalSessions} sessions`
+            : ""
+        }`}
       />
 
       <section className="grid grid-cols-2 gap-6 border-b border-line pb-8 lg:grid-cols-3">
-        <Stat label="Total spend" value={fmtUsd(sum.totalSpend)} />
+        <Stat
+          label="Total spend"
+          value={`${fmtUsd(sum.totalSpend)} est.`}
+          hint="list-price estimate, last 30 days"
+        />
         <Stat label="Sessions" value={sum.totalSessions.toLocaleString("en-US")} />
         <Stat label="Avg cost / session" value={fmtUsd6(sum.avgCostUsd)} />
         <Stat label="Tokens" value={fmtTokens(sum.totalTokens)} hint="in + out, cache reads included" />
@@ -48,7 +57,7 @@ export function AnalyticsClient() {
 
       <section>
         <h2 className="mb-3 font-mono text-[11px] uppercase tracking-wider text-ink-3">
-          Daily spend
+          Daily spend (est.)
         </h2>
         <Card className="p-5">
           <BarChart
@@ -63,7 +72,7 @@ export function AnalyticsClient() {
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div>
           <h2 className="mb-3 font-mono text-[11px] uppercase tracking-wider text-ink-3">
-            Spend by model
+            Spend by model (est.)
           </h2>
           <Card className="space-y-4 p-5">
             {modelSplit.map((m) => (
@@ -86,8 +95,10 @@ export function AnalyticsClient() {
               <p className="text-sm text-ink-2">No sessions recorded yet.</p>
             )}
             <p className="border-t border-line pt-3 text-xs text-ink-2">
-              An estimate: recorded token counts priced at published list rates, which is not what a
-              subscription actually bills. The rates are in{" "}
+              Every spend figure on this page is an estimate: recorded token counts priced at
+              published list rates, which is not what a Max or Pro subscription actually bills. It
+              covers the last 30 days only — not all time — and at most the newest{" "}
+              {sessions.length} sessions, each including the subagents it spawned. The rates are in{" "}
               <Link href="/settings" className="underline underline-offset-2 hover:text-ink">
                 Settings
               </Link>

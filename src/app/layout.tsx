@@ -28,7 +28,12 @@ export const metadata: Metadata = {
     "VibeLog is a local-first workspace for tracking every agent session: prompts, outputs, tool calls, cost, and performance. Your data never leaves your machine.",
 };
 
-const THEME_INIT_SCRIPT = `(function(){try{var k="vibelog-theme",s=localStorage.getItem(k),t=s==="light"||s==="dark"?s:(window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.setAttribute("data-theme",t);}catch(e){}})();`;
+// Runs before first paint, so it also marks the document as able to animate.
+// Motion serialises its `initial` state into the SSR markup (opacity:0), and
+// with scripting off nothing ever animates it back — the landing page shipped
+// a nav, a footer and 2500px of nothing. globals.css forces reveal targets
+// visible until this flag lands.
+const THEME_INIT_SCRIPT = `(function(){try{var k="vibelog-theme",s=localStorage.getItem(k),t=s==="light"||s==="dark"?s:(window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.setAttribute("data-theme",t);}catch(e){}document.documentElement.setAttribute("data-motion","on");})();`;
 
 export default function RootLayout({
   children,

@@ -103,10 +103,14 @@ fs.mkdirSync(DIR, { recursive: true });
 // Data contract with the dashboard (src/lib/live.tsx): full-state snapshots
 // { now, source, sessions } where live sessions carry `phase` and every event
 // a stable `seq`. state.json's mtime doubles as the CLI heartbeat.
-function writeState(sessions, source) {
+// `totalSessions` is how many sessions exist before the MAX_SESSIONS cap, so
+// the dashboard can say "showing the last 200 of 333" instead of implying 200
+// is the whole story. Defaults to what's being sent when nothing was capped.
+function writeState(sessions, source, totalSessions = sessions.length) {
   for (const s of sessions) s.events.forEach((e, i) => (e.seq ??= i));
-  const json = JSON.stringify({ now: Date.now(), source, sessions, project: CURRENT_PROJECT }, (k, v) =>
-    k.startsWith("_") ? undefined : v
+  const json = JSON.stringify(
+    { now: Date.now(), source, sessions, totalSessions, maxSessions: MAX_SESSIONS, project: CURRENT_PROJECT },
+    (k, v) => (k.startsWith("_") ? undefined : v)
   );
   fs.writeFileSync(STATE + ".tmp", json);
   try {
@@ -141,20 +145,53 @@ const PRICING = (() => {
   } catch {
     return {
       cacheReadMultiplier: 0.1,
-      cacheWriteMultiplier: 1.25,
+      cacheWrite: { "1h": 2, "5m": 1.25 },
       models: { "claude-sonnet": { in: 3, out: 15 } },
       fallback: "claude-sonnet",
     };
   }
 })();
 const MODELS = Object.entries(PRICING.models);
-const rateFor = (model) => {
+// $/Mtok for a model. `inputTokens` selects the long-context tier when a model
+// has one — none currently do (Claude 4.6+ price the full 1M window flat), but
+// the hook is here so adding a tier is a pricing.json edit, not a code change.
+const rateFor = (model, inputTokens = 0) => {
   const hit =
     MODELS.find(([p]) => (model || "").startsWith(p)) ??
     MODELS.find(([p]) => p === PRICING.fallback);
   const [, r] = hit;
-  return { inUsd: r.in, outUsd: r.out };
+  // highest matching threshold wins, so tiers can be listed in any order
+  const tier = (r.tiers ?? [])
+    .filter((t) => inputTokens > t.above)
+    .sort((a, b) => b.above - a.above)[0];
+  return {
+    inUsd: r.in * (tier?.in ?? 1),
+    outUsd: r.out * (tier?.out ?? 1),
+  };
 };
+
+// Exact cost of one API response. Cache writes bill by TTL — 1h at 2x input,
+// 5m at 1.25x — so a transcript that only carries the flat
+// cache_creation_input_tokens is billed at the 5m rate (the API default).
+// Same formula as src/lib/pricing.ts costOfUsage; keep the two in sync.
+function costOfUsage(model, u) {
+  const inTok =
+    (u.input_tokens ?? 0) +
+    (u.cache_creation_input_tokens ?? 0) +
+    (u.cache_read_input_tokens ?? 0);
+  const r = rateFor(model, inTok);
+  const cc = u.cache_creation;
+  const w1h = cc?.ephemeral_1h_input_tokens ?? 0;
+  const w5m = cc ? (cc.ephemeral_5m_input_tokens ?? 0) : (u.cache_creation_input_tokens ?? 0);
+  return (
+    ((u.input_tokens ?? 0) * r.inUsd +
+      w1h * r.inUsd * PRICING.cacheWrite["1h"] +
+      w5m * r.inUsd * PRICING.cacheWrite["5m"] +
+      (u.cache_read_input_tokens ?? 0) * r.inUsd * PRICING.cacheReadMultiplier +
+      (u.output_tokens ?? 0) * r.outUsd) /
+    1e6
+  );
+}
 
 // ---------- mock collector ----------
 
@@ -363,29 +400,34 @@ function startMock() {
 
 const PROJECTS = process.env.VIBELOG_PROJECTS || path.join(HOME, ".claude", "projects");
 const LIVE_MS = 120_000; // no writes for 2 min → session considered finished
-const MAX_AGE = 30 * 864e5;
+const MAX_AGE = 30 * 864e5; // transcripts older than 30 days are not read at all
+// Newest N sessions are sent to the dashboard. The dashboard is told the true
+// total alongside, so the cap is stated rather than hidden.
+const MAX_SESSIONS = 200;
 
-// First line of the prompt that reads like a task, not scaffolding. Prompts
-// often open with headers ("MISSION:", "Session name:") or shell commands —
-// skip lines that end in ":", look like commands/markdown noise, or are too
-// short to mean anything; fall back to the first 3+ word line, then the
-// whole prompt flattened.
-const CMDISH = /^(```|\$|>|#|cd |npm |npx |git |node |curl |powershell|pwsh |python |pip |In the terminal|Run |Then )/i;
-function titleFrom(text) {
-  let fallback = "";
-  for (const raw of text.split("\n")) {
-    const t = raw.trim().replace(/^[#*>`\s-]+/, "").replace(/[*`:]+$/, "").trim();
-    if (!t || CMDISH.test(t) || /^https?:/.test(t)) continue;
-    const words = t.split(/\s+/).length;
-    // header lines ("Session name:") end in ":" — only trust them when long
-    // enough to read as a task ("Fix 2 ESLint errors, no logic changes:")
-    if (words >= 4 && (words >= 5 || !raw.trim().endsWith(":"))) return t;
-    if (!fallback && words >= 3) fallback = t;
+// A session's title is the first thing the human asked for. Real prompts are
+// not headlines — they open with an imperative ("Do a deep audit of the entire
+// VibeLog project at …"), so strip the verb and keep the object. A pasted
+// system prompt is not a title at all; those fall back to the directory.
+const CMD_WORD = /^(run|fix|add|do|make|build|check|update|implement|create|write|refactor|remove|delete|move|rename|change|convert)\b[\s,:—-]*/i;
+const TITLE_MAX = 60;
+function titleFrom(text, cwd) {
+  const dirTitle = cwd ? path.basename(cwd) + " session" : "Claude Code session";
+  const flat = text.replace(/^[#*>`\s-]+/, "").replace(/\s+/g, " ").trim();
+  // Long openings that never reach a full stop, and anything starting "You are",
+  // are instructions to the model rather than a request from the user.
+  if (!flat || /^you are\b/i.test(flat) || flat.split(".")[0].length > 120) return dirTitle;
+  let t = flat;
+  // stacked imperatives ("Go fix the …") strip too, but never down to a stub
+  while (CMD_WORD.test(t)) {
+    const rest = t.replace(CMD_WORD, "");
+    if (rest.split(" ").length < 3) break;
+    t = rest;
   }
-  return fallback || text.replace(/\s+/g, " ").trim();
+  return trunc(t.charAt(0).toUpperCase() + t.slice(1), TITLE_MAX);
 }
 
-function parseTranscript(file, mtimeMs) {
+function parseTranscript(file, mtimeMs, parentId) {
   let lines;
   try {
     lines = fs.readFileSync(file, "utf8").split("\n");
@@ -446,7 +488,9 @@ function parseTranscript(file, mtimeMs) {
           if (ts && t.ts) t.event.durMs = Math.max(1, ts - t.ts);
           pending.delete(p.tool_use_id);
         } else if (p.type === "text" && p.text && !/^<|^Caveat:/.test(p.text.trim())) {
-          if (!title) title = titleFrom(p.text.trim());
+          // first human turn only — titleFrom already decides what to do when
+          // that turn is a system prompt, so a later one must not override it
+          if (!title) title = titleFrom(p.text.trim(), cwd);
           events.push({ at, kind: "prompt", label: "Task", detail: trunc(p.text.trim(), 280) });
         }
       }
@@ -460,15 +504,7 @@ function parseTranscript(file, mtimeMs) {
         const inTok = (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
         tokensIn += inTok;
         tokensOut += u.output_tokens ?? 0;
-        // Same formula as src/lib/pricing.ts costOfUsage — rates + cache
-        // multipliers both come from pricing.json.
-        const r = rateFor(m.model);
-        costUsd +=
-          ((u.input_tokens ?? 0) * r.inUsd +
-            (u.cache_creation_input_tokens ?? 0) * r.inUsd * PRICING.cacheWriteMultiplier +
-            (u.cache_read_input_tokens ?? 0) * r.inUsd * PRICING.cacheReadMultiplier +
-            (u.output_tokens ?? 0) * r.outUsd) /
-          1e6;
+        costUsd += costOfUsage(m.model, u);
       }
       for (const p of Array.isArray(m.content) ? m.content : []) {
         if (p.type === "tool_use") {
@@ -501,12 +537,18 @@ function parseTranscript(file, mtimeMs) {
   const meta = metaFor(cwd); // projectId/projectName from <cwd>/.vibelog
   return {
     phase: live ? phaseFor(events) : undefined,
-    id: path.basename(file, ".jsonl").slice(0, 8),
+    // Subagent transcripts are named `agent-<hex>.jsonl`; without stripping the
+    // shared prefix every one of them would collapse to the id "agent-a".
+    id: path.basename(file, ".jsonl").replace(/^agent-/, "").slice(0, 8),
+    // set for subagent transcripts — the session whose run spawned them. Rolled
+    // up in startReal; underscore-prefixed so writeState strips it.
+    _parentId: parentId,
     // A transcript's own `summary` is a human-readable title, so it wins over
     // the first-prompt heuristic. ponytail: current Claude Code builds never
     // write a summary line (0 of 325 transcripts on this machine), so in
-    // practice this still falls through to titleFrom().
-    title: trunc(summary || title || (cwd ? path.basename(cwd) + " session" : "Claude Code session"), 72),
+    // practice this still falls through to titleFrom() — which already caps
+    // its own output and supplies the directory fallback.
+    title: summary ? trunc(summary, 72) : title || (cwd ? path.basename(cwd) + " session" : "Claude Code session"),
     agent: "claude-code",
     model,
     status,
@@ -533,6 +575,38 @@ function parseTranscript(file, mtimeMs) {
   };
 }
 
+// A project directory holds one transcript per session at the top level, plus
+// the subagent transcripts that session spawned, nested underneath it:
+//
+//   <project>/<session-uuid>.jsonl                                  the session
+//   <project>/<session-uuid>/subagents/agent-<hex>.jsonl            its subagents
+//   <project>/<session-uuid>/subagents/workflows/<wf>/agent-*.jsonl deeper still
+//
+// So the parent of any nested transcript is the first directory under the
+// project, and everything below it belongs to that session's bill. Depth is
+// capped rather than unbounded — sibling dirs like tool-results/ hold no
+// transcripts, and a runaway symlink shouldn't wedge the tick.
+const WALK_MAX_DEPTH = 6;
+function collectTranscripts(dir, parentId, depth, out) {
+  if (depth > WALK_MAX_DEPTH) return;
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const e of entries) {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      // the session's own directory is named after its transcript, so the
+      // parent id for everything inside it is that transcript's id
+      collectTranscripts(full, parentId ?? e.name.slice(0, 8), depth + 1, out);
+    } else if (e.name.endsWith(".jsonl")) {
+      out.push({ file: full, parentId });
+    }
+  }
+}
+
 function startReal() {
   const cache = new Map(); // file -> { mtimeMs, session }
   const tick = () => {
@@ -542,12 +616,11 @@ function startReal() {
     try {
       for (const proj of fs.readdirSync(PROJECTS, { withFileTypes: true }))
         if (proj.isDirectory())
-          for (const f of fs.readdirSync(path.join(PROJECTS, proj.name)))
-            if (f.endsWith(".jsonl")) files.push(path.join(PROJECTS, proj.name, f));
+          collectTranscripts(path.join(PROJECTS, proj.name), undefined, 0, files);
     } catch {
       files = []; // no ~/.claude/projects yet — keep waiting
     }
-    for (const file of files) {
+    for (const { file, parentId } of files) {
       let st;
       try {
         st = fs.statSync(file);
@@ -560,27 +633,49 @@ function startReal() {
       if (c && c.mtimeMs === st.mtimeMs && (c.session?.status === "live") === isLive) continue;
       // ponytail: full reparse of any changed file each tick; incremental
       // tail-parsing only matters once transcripts pass tens of MB
-      const session = parseTranscript(file, st.mtimeMs);
+      const session = parseTranscript(file, st.mtimeMs, parentId);
       cache.set(file, { mtimeMs: st.mtimeMs, session });
       if (session) changed = true;
     }
-    const sessions = [...cache.values()]
-      .map((c) => c.session)
-      .filter(Boolean)
-      .sort((a, b) => b.startedAt - a.startedAt)
-      .slice(0, 200);
+
+    // Roll subagent cost and tokens up into the session that spawned them: that
+    // run really did spend it, and a subagent is not a session a human started.
+    // Built fresh from the cache every tick onto *copies* — adding to the cached
+    // parent instead would re-add the same subagents on every tick.
+    const parsed = [...cache.values()].map((c) => c.session).filter(Boolean);
+    const tops = new Map();
+    for (const s of parsed) if (!s._parentId) tops.set(s.id, { ...s, subagents: 0 });
+    const orphans = [];
+    for (const s of parsed) {
+      if (!s._parentId) continue;
+      const p = tops.get(s._parentId);
+      // parent transcript aged out of the 30-day window or was deleted — show
+      // the subagent on its own rather than silently dropping its cost
+      if (!p) {
+        orphans.push(s);
+        continue;
+      }
+      p.costUsd += s.costUsd;
+      p.tokensIn += s.tokensIn;
+      p.tokensOut += s.tokensOut;
+      p.toolCalls += s.toolCalls;
+      p.subagents++;
+    }
+
+    const all = [...tops.values(), ...orphans].sort((a, b) => b.startedAt - a.startedAt);
+    const sessions = all.slice(0, MAX_SESSIONS);
     const anyLive = sessions.some((s) => s.status === "live");
     if (anyLive)
       for (const s of sessions)
         if (s.status === "live") s.durationSec = Math.max(1, Math.round((now - s.startedAt) / 1000));
-    if (changed || anyLive) writeState(sessions, "claude-code");
+    if (changed || anyLive) writeState(sessions, "claude-code", all.length);
     else {
       // heartbeat: keep state.json's mtime fresh so the dashboard can tell
       // the CLI is alive even when no transcript is changing
       try {
         fs.utimesSync(STATE, new Date(), new Date());
       } catch {
-        writeState(sessions, "claude-code"); // first run, no state file yet
+        writeState(sessions, "claude-code", all.length); // first run, no state file yet
       }
     }
   };
