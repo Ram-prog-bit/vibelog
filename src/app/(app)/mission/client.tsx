@@ -41,28 +41,16 @@ function ModeToggle({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void 
   );
 }
 
-// Nothing recorded on this machine — the recorder is ready, not broken.
-// `onDemo` (first run only) offers the labeled demo dataset as a way to look
-// around before recording anything; it never renders once real data exists.
-function MissionEmpty({ onDemo }: { onDemo?: () => void }) {
+// The CLI is recording but nothing is on disk — ready, not broken.
+function MissionEmpty() {
   return (
-    <div className="flex min-h-[70vh] flex-col items-center justify-center">
-      <EmptyState
-        tape
-        title="Nothing on the air."
-        sub="Start a Claude Code session and it shows up here."
-        code="vibelog start"
-        className="py-0"
-      />
-      {onDemo && (
-        <button
-          onClick={onDemo}
-          className="mt-8 font-mono text-[11px] text-ink-3 underline underline-offset-2 transition-colors hover:text-ink"
-        >
-          or browse demo data →
-        </button>
-      )}
-    </div>
+    <EmptyState
+      tape
+      title="Nothing on the air."
+      sub="Start a Claude Code session and it shows up here."
+      code="vibelog start"
+      className="min-h-[70vh] justify-center"
+    />
   );
 }
 
@@ -128,33 +116,23 @@ function Welcome({
 }
 
 export function MissionClient() {
-  const { sessions, totalSessions, now, daily, mode, isDemo, alive, graceOver, setMode, project } =
-    useLive();
+  const { sessions, totalSessions, now, daily, mode, isDemo, alive, setMode, project } = useLive();
   const { config, save } = useConfig();
   const today = daily[daily.length - 1];
   const live = sessions.filter((s) => s.status === "live");
 
-  // ---- first run ----
-  // Until onboarded, this page never shows demo data: a brand-new user either
-  // gets the welcome screen (real sessions found on disk) or the empty state.
   if (!config) return null; // config GET is a local round-trip — a frame or two
-  if (!config.onboarded) {
-    if (!alive && !graceOver) return null; // let live-detection settle (≤3s)
-    const real = isDemo ? [] : sessions;
-    if (real.length === 0)
-      return (
-        <MissionEmpty
-          onDemo={() => {
-            save({ onboarded: true });
-            setMode("mock");
-          }}
-        />
-      );
-    return <Welcome sessions={real} total={totalSessions} onDone={() => save({ onboarded: true })} />;
-  }
 
-  // recording, but every recorded session was pruned or deleted
-  if (!isDemo && mode === "live" && sessions.length === 0) return <MissionEmpty />;
+  // First run with a CLI streaming real recordings: the welcome screen, once.
+  // Without a CLI the page falls through to the labeled demo data below.
+  if (!config.onboarded && alive && !isDemo && sessions.length > 0)
+    return (
+      <Welcome sessions={sessions} total={totalSessions} onDone={() => save({ onboarded: true })} />
+    );
+
+  // The CLI is running but has genuinely nothing recorded (fresh install, or
+  // everything pruned/deleted). No CLI at all → demo data + banner instead.
+  if (alive && !isDemo && sessions.length === 0) return <MissionEmpty />;
 
   const weekSessions = sessions.filter(
     (s) => s.startedAt > now - 7 * 24 * 3_600_000 && s.status !== "queued"
