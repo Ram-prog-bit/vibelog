@@ -1,0 +1,13 @@
+{
+  "onboarded": false,
+  "tapeCalloutSeen": false,
+  "retentionDays": 30,
+  "redactSecrets": true,
+  "capturePrompts": true,
+  "captureOutputs": true,
+  "captureToolArgs": true,
+  "alertSessionUsd": 0,
+  "alertDailyUsd": 0,
+  "weeklyDigest": true,
+  "deletedBefore": 0
+}

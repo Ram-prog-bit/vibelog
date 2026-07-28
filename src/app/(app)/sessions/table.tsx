@@ -7,7 +7,7 @@ import { type Session, type SessionStatus } from "@/lib/data";
 import { useLive } from "@/lib/live";
 import { sessionMatches } from "@/lib/search";
 import { fmtUsd, fmtUsd6, fmtTokens, fmtDuration, timeAgo } from "@/lib/format";
-import { PageHeader, Card, StatusLabel, DemoBanner } from "@/components/ui";
+import { PageHeader, Card, StatusLabel, DemoBanner, EmptyState } from "@/components/ui";
 import { ExportButton } from "@/components/export";
 
 const FILTERS: { key: SessionStatus | "all"; label: string }[] = [
@@ -85,7 +85,7 @@ function buildRows(sessions: Session[], group: GroupBy): Row[] {
 }
 
 export function SessionsTable() {
-  const { sessions, totalSessions, now, isDemo } = useLive();
+  const { sessions, totalSessions, now, isDemo, isLive } = useLive();
   const [filter, setFilter] = useState<SessionStatus | "all">("all");
   const [group, setGroup] = useState<GroupBy>("session");
   const [q, setQ] = useState("");
@@ -106,6 +106,19 @@ export function SessionsTable() {
   const sessionCount = rows.filter((r) => r.kind === "session").length;
   // machine labels only earn a column-inch once a second machine shows up
   const multiMachine = new Set(sessions.map((s) => s.machine ?? "")).size > 1;
+
+  // recording, nothing recorded yet — the recorder is ready, not broken
+  if (isLive && sessions.length === 0)
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Sessions" sub="Nothing recorded on this machine yet" />
+        <EmptyState
+          title="No sessions recorded yet."
+          sub="Your flight recorder is ready. Start an agent and it will appear here within seconds."
+          className="min-h-[50vh] justify-center"
+        />
+      </div>
+    );
 
   return (
     <div className="space-y-6">
@@ -249,8 +262,20 @@ export function SessionsTable() {
             )}
             {sessionCount === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-sm text-ink-2">
-                  No sessions match. Clear the search or pick another filter.
+                <td colSpan={7} className="px-4">
+                  {dq ? (
+                    <EmptyState
+                      title={`Nothing matched "${dq}".`}
+                      sub="Try searching for a file name, model, or task."
+                      className="py-12"
+                    />
+                  ) : (
+                    <EmptyState
+                      title="Nothing under this filter."
+                      sub="Pick another status filter to see your sessions."
+                      className="py-12"
+                    />
+                  )}
                 </td>
               </tr>
             )}

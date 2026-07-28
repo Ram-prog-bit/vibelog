@@ -6,6 +6,7 @@ import {
   Activity,
   ListVideo,
   ChartNoAxesColumn,
+  FileText,
   Settings,
   BookOpen,
 } from "lucide-react";
@@ -16,6 +17,7 @@ const NAV = [
   { href: "/mission", label: "Mission control", icon: Activity },
   { href: "/sessions", label: "Sessions", icon: ListVideo },
   { href: "/analytics", label: "Analytics", icon: ChartNoAxesColumn },
+  { href: "/digest", label: "Weekly digest", icon: FileText },
   { href: "/settings", label: "Settings", icon: Settings },
   { href: "/docs", label: "Docs", icon: BookOpen },
 ];

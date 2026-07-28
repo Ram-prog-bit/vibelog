@@ -1,28 +1,50 @@
 "use client";
 
+import { useState } from "react";
 import { PageHeader, Card } from "@/components/ui";
+import { useConfig, type Config } from "@/lib/config";
 import PRICING from "../../../../pricing.json";
 
-// Nothing on this page is wired to storage yet, so unbuilt controls say so
-// rather than pretending to hold a setting. A toggle that silently forgets is
-// worse than no toggle — "Redact secrets" in particular used to default to ON
-// while doing nothing, which misrepresented what lands in state.json.
-function Soon() {
+// Every control on this page reads and writes ~/.vibelog/config.json through
+// /api/config. There is no save button: changes POST immediately and the
+// collector picks them up on its next tick (~2s).
+
+function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
-    <span className="shrink-0 rounded border border-line px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ink-3">
-      coming soon
-    </span>
+    <button
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onClick={() => onChange(!on)}
+      className={`relative h-5 w-9 shrink-0 rounded-full border transition-colors ${
+        on ? "border-ink bg-ink" : "border-line-2 bg-wash"
+      }`}
+    >
+      <span
+        className={`absolute top-1/2 size-3.5 -translate-y-1/2 rounded-full transition-all ${
+          on ? "left-[17px] bg-paper" : "left-[2px] bg-ink-3"
+        }`}
+      />
+    </button>
   );
 }
 
-function Pending({ label, desc }: { label: string; desc: string }) {
+function Row({
+  label,
+  desc,
+  children,
+}: {
+  label: string;
+  desc: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="flex items-start justify-between gap-6 py-3.5">
+    <div className="flex items-center justify-between gap-6 py-3.5">
       <div>
-        <div className="text-sm font-medium text-ink-2">{label}</div>
-        <div className="mt-0.5 text-xs text-ink-3">{desc}</div>
+        <div className="text-sm font-medium">{label}</div>
+        <div className="mt-0.5 text-xs text-ink-2">{desc}</div>
       </div>
-      <Soon />
+      {children}
     </div>
   );
 }
@@ -36,6 +58,64 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+const RETENTION: { days: number; label: string }[] = [
+  { days: 30, label: "30d" },
+  { days: 90, label: "90d" },
+  { days: 365, label: "1y" },
+  { days: 0, label: "forever" },
+];
+
+// Toggle + dollar threshold in one row. 0 in config means off; the last
+// nonzero amount is kept locally so switching off and back on doesn't reset it.
+function AlertRow({
+  label,
+  desc,
+  value,
+  fallback,
+  onChange,
+}: {
+  label: string;
+  desc: string;
+  value: number;
+  fallback: number;
+  onChange: (v: number) => void;
+}) {
+  const [amount, setAmount] = useState(value > 0 ? String(value) : String(fallback));
+  const on = value > 0;
+  return (
+    <Row label={label} desc={desc}>
+      <span className="flex shrink-0 items-center gap-3">
+        <label
+          className={`flex items-center gap-1 rounded-md border border-line px-2 py-1 font-mono text-xs transition-opacity ${
+            on ? "" : "pointer-events-none opacity-40"
+          }`}
+        >
+          $
+          <input
+            type="number"
+            min={0.01}
+            step={0.01}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            onBlur={() => {
+              const v = Number(amount);
+              if (v > 0) onChange(v);
+              else setAmount(value > 0 ? String(value) : String(fallback));
+            }}
+            className="w-16 bg-transparent text-right tabular-nums focus:outline-none"
+            aria-label={`${label} threshold in dollars`}
+          />
+        </label>
+        <Toggle
+          on={on}
+          label={label}
+          onChange={(v) => onChange(v ? Number(amount) > 0 ? Number(amount) : fallback : 0)}
+        />
+      </span>
+    </Row>
+  );
+}
+
 // Straight from pricing.json — the same file the recorder bills with, so this
 // table can never drift from the numbers on the analytics page.
 const RATES = Object.entries(PRICING.models).map(([model, r]) => ({
@@ -45,40 +125,143 @@ const RATES = Object.entries(PRICING.models).map(([model, r]) => ({
 }));
 
 export function SettingsForm() {
+  const { config, save, saved } = useConfig();
+
+  async function deleteAll() {
+    if (
+      !window.confirm(
+        "Delete all recordings? This removes state.json and every remote session file from ~/.vibelog. There is no cloud copy to restore from."
+      )
+    )
+      return;
+    await fetch("/api/data", { method: "DELETE" });
+    location.href = "/mission"; // reload into the empty state
+  }
+
+  if (!config)
+    return (
+      <div className="space-y-8">
+        <PageHeader title="Settings" sub="What the recorder is doing on this machine" />
+      </div>
+    );
+
+  const set = (patch: Partial<Config>) => save(patch);
+
   return (
     <div className="space-y-8">
-      <PageHeader title="Settings" sub="What the recorder is doing on this machine" />
+      <PageHeader
+        title="Settings"
+        sub="What the recorder is doing on this machine · changes apply within a couple of seconds"
+        right={
+          <span
+            role="status"
+            className={`font-mono text-[11px] uppercase tracking-wider text-ink-3 transition-opacity duration-300 ${
+              saved ? "opacity-100" : "opacity-0"
+            }`}
+          >
+            Saved
+          </span>
+        }
+      />
 
       <Section title="Workspace">
-        <div className="flex items-center justify-between gap-6 py-3.5">
-          <div>
-            <div className="text-sm font-medium">Storage location</div>
-            <div className="mt-0.5 text-xs text-ink-2">Where session recordings are written</div>
-          </div>
-          <code className="rounded bg-wash px-2 py-1 font-mono text-xs text-ink-2">
-            ~/.vibelog
-          </code>
-        </div>
-        <Pending
+        <Row label="Storage location" desc="Where session recordings are written">
+          <code className="rounded bg-wash px-2 py-1 font-mono text-xs text-ink-2">~/.vibelog</code>
+        </Row>
+        <Row
           label="Retention"
-          desc="Compact sessions older than a cutoff. Today nothing is ever compacted; the collector keeps the 200 most recent sessions from the last 30 days."
-        />
+          desc="Sessions older than this are pruned from state.json on every collector tick"
+        >
+          <span className="inline-flex shrink-0 overflow-hidden rounded-md border border-line font-mono text-[10px] uppercase tracking-wider">
+            {RETENTION.map((r, i) => (
+              <button
+                key={r.days}
+                onClick={() => set({ retentionDays: r.days })}
+                aria-pressed={config.retentionDays === r.days}
+                className={`px-2.5 py-1 transition-colors ${
+                  config.retentionDays === r.days ? "bg-wash text-ink" : "text-ink-3 hover:text-ink-2"
+                } ${i > 0 ? "border-l border-line" : ""}`}
+              >
+                {r.label}
+              </button>
+            ))}
+          </span>
+        </Row>
       </Section>
 
       <Section title="Recording">
         <div className="py-3.5 text-xs leading-relaxed text-ink-2">
-          Prompt and assistant text are recorded to{" "}
-          <code className="font-mono text-ink">~/.vibelog/state.json</code> in plain text, truncated
-          to 280 characters per event. There is no redaction yet — treat that file as sensitive.
+          Recordings go to <code className="font-mono text-ink">~/.vibelog/state.json</code> in
+          plain text, truncated to 280 characters per event. The switches below control what the
+          collector stores from the moment they change — already-recorded sessions are rewritten on
+          its next pass.
         </div>
-        <Pending
-          label="Capture controls"
-          desc="Choose per-session whether prompt text, model output, and tool arguments are stored."
-        />
-        <Pending
+        <Row label="Prompt text" desc="Store what you asked. Off records the moment, not the words">
+          <Toggle
+            on={config.capturePrompts}
+            label="Prompt text"
+            onChange={(v) => set({ capturePrompts: v })}
+          />
+        </Row>
+        <Row label="Model output" desc="Store assistant replies and summaries">
+          <Toggle
+            on={config.captureOutputs}
+            label="Model output"
+            onChange={(v) => set({ captureOutputs: v })}
+          />
+        </Row>
+        <Row label="Tool arguments" desc="Store file paths and commands. Off keeps tool names only">
+          <Toggle
+            on={config.captureToolArgs}
+            label="Tool arguments"
+            onChange={(v) => set({ captureToolArgs: v })}
+          />
+        </Row>
+        <Row
           label="Redact secrets"
-          desc="Scrub values matching your .env keys before anything is written to disk."
+          desc="Values from .env, .env.local and .env.production in a session's directory are replaced with [REDACTED]"
+        >
+          <Toggle
+            on={config.redactSecrets}
+            label="Redact secrets"
+            onChange={(v) => set({ redactSecrets: v })}
+          />
+        </Row>
+      </Section>
+
+      <Section title="Alerts">
+        <AlertRow
+          label="Per-session alert"
+          desc="Desktop notification when any live session crosses this amount"
+          value={config.alertSessionUsd}
+          fallback={5}
+          onChange={(v) => set({ alertSessionUsd: v })}
         />
+        <AlertRow
+          label="Daily alert"
+          desc="Desktop notification when today's total spend crosses this amount"
+          value={config.alertDailyUsd}
+          fallback={10}
+          onChange={(v) => set({ alertDailyUsd: v })}
+        />
+        <div className="py-3.5 text-xs leading-relaxed text-ink-2">
+          Alerts fire from the collector, once per session or day. If desktop notifications are
+          blocked, the alert is printed to the terminal running{" "}
+          <code className="font-mono text-ink">vibelog start</code> instead.
+        </div>
+      </Section>
+
+      <Section title="Digest">
+        <Row
+          label="Generate weekly digest"
+          desc="Every Monday morning, a markdown report of last week lands in ~/.vibelog/digests"
+        >
+          <Toggle
+            on={config.weeklyDigest}
+            label="Generate weekly digest"
+            onChange={(v) => set({ weeklyDigest: v })}
+          />
+        </Row>
       </Section>
 
       <Section title="Pricing">
@@ -116,19 +299,23 @@ export function SettingsForm() {
       </Section>
 
       <Section title="Data">
-        <div className="flex items-start justify-between gap-6 py-3.5">
-          <div>
-            <div className="text-sm font-medium">Export</div>
-            <div className="mt-0.5 text-xs text-ink-2">
-              CSV, JSON, or Markdown, generated in your browser — use the Export button on the
-              Sessions page (or on any session) to pick a format and date range.
-            </div>
-          </div>
-        </div>
-        <Pending
+        <Row
+          label="Export"
+          desc="CSV, JSON, or Markdown, generated in your browser — use the Export button on the Sessions page or on any session"
+        >
+          <span />
+        </Row>
+        <Row
           label="Delete all recordings"
-          desc="Until then, delete ~/.vibelog by hand. There is no cloud copy to restore from."
-        />
+          desc="Removes state.json and all remote session files. Sessions recorded after deletion appear again"
+        >
+          <button
+            onClick={deleteAll}
+            className="shrink-0 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-rec transition-colors hover:border-rec hover:bg-rec-soft"
+          >
+            Delete all
+          </button>
+        </Row>
       </Section>
     </div>
   );

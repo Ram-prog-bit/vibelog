@@ -159,6 +159,9 @@ export function useLive() {
   return {
     isLive,
     mode,
+    // the 3s live-detection window has passed — before this, nothing is settled
+    // enough to make first-run decisions on (onboarding gates on it)
+    graceOver,
     // Everything on screen is simulated: either the built-in demo set, or a
     // CLI running `vibelog start --mock`. The second case used to show fake
     // sessions and fake money under a LIVE chip with no warning at all.

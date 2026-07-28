@@ -4,8 +4,9 @@ import Link from "next/link";
 import { ArrowUpRight, FolderGit2, GitBranch, Monitor } from "lucide-react";
 import { type Session } from "@/lib/data";
 import { useLive, type Mode } from "@/lib/live";
+import { useConfig } from "@/lib/config";
 import { fmtUsd, fmtTokens, fmtDuration, timeAgo } from "@/lib/format";
-import { PageHeader, Stat, Card, StatusDot, StatusLabel, TapeReel, DemoBanner } from "@/components/ui";
+import { PageHeader, Stat, Card, StatusDot, StatusLabel, TapeReel, DemoBanner, EmptyState } from "@/components/ui";
 import { Tape } from "@/components/tape";
 import { Sparkline } from "@/components/charts";
 
@@ -40,10 +41,121 @@ function ModeToggle({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void 
   );
 }
 
+// Nothing recorded on this machine — the recorder is ready, not broken.
+// `onDemo` (first run only) offers the labeled demo dataset as a way to look
+// around before recording anything; it never renders once real data exists.
+function MissionEmpty({ onDemo }: { onDemo?: () => void }) {
+  return (
+    <div className="flex min-h-[70vh] flex-col items-center justify-center">
+      <EmptyState
+        tape
+        title="Nothing on the air."
+        sub="Start a Claude Code session and it shows up here."
+        code="vibelog start"
+        className="py-0"
+      />
+      {onDemo && (
+        <button
+          onClick={onDemo}
+          className="mt-8 font-mono text-[11px] text-ink-3 underline underline-offset-2 transition-colors hover:text-ink"
+        >
+          or browse demo data →
+        </button>
+      )}
+    </div>
+  );
+}
+
+// First run with real recordings on disk: say what was found, one way forward.
+function Welcome({
+  sessions,
+  total,
+  onDone,
+}: {
+  sessions: Session[];
+  total: number;
+  onDone: () => void;
+}) {
+  const tokens = sessions.reduce((a, s) => a + s.tokensIn + s.tokensOut, 0);
+  const cost = sessions.reduce((a, s) => a + s.costUsd, 0);
+  return (
+    <div className="flex min-h-[70vh] flex-col items-center justify-center py-16 text-center">
+      <span className="mb-8 grid size-10 place-items-center rounded-full border-[1.5px] border-ink">
+        <span className="size-2.5 rounded-full bg-rec animate-blink" />
+      </span>
+      <h1 className="font-serif text-5xl tracking-tight max-sm:text-4xl">Welcome to VibeLog</h1>
+      <p className="mt-4 max-w-md text-sm leading-relaxed text-ink-2">
+        Your flight recorder scanned this machine and found Claude Code sessions already on disk.
+        Everything stays local.
+      </p>
+      <div className="mt-12 grid grid-cols-3 gap-10 max-sm:gap-6">
+        <div>
+          <div className="text-[28px] font-semibold tracking-tight tabular-nums">{total}</div>
+          <div className="mt-1 font-mono text-[11px] uppercase tracking-wider text-ink-3">
+            sessions
+          </div>
+        </div>
+        <div>
+          <div className="text-[28px] font-semibold tracking-tight tabular-nums">
+            {fmtTokens(tokens)}
+          </div>
+          <div className="mt-1 font-mono text-[11px] uppercase tracking-wider text-ink-3">
+            tokens
+          </div>
+        </div>
+        <div>
+          <div className="text-[28px] font-semibold tracking-tight tabular-nums">
+            {fmtUsd(cost)}
+          </div>
+          <div className="mt-1 font-mono text-[11px] uppercase tracking-wider text-ink-3">
+            est. cost
+          </div>
+        </div>
+      </div>
+      {total > sessions.length && (
+        <p className="mt-3 font-mono text-[11px] text-ink-3">
+          tokens and cost cover the newest {sessions.length}
+        </p>
+      )}
+      <button
+        onClick={onDone}
+        className="mt-12 inline-flex items-center gap-2 rounded-md bg-ink px-5 py-2.5 text-sm font-medium text-paper transition-opacity hover:opacity-85"
+      >
+        Show me my sessions <span aria-hidden>→</span>
+      </button>
+    </div>
+  );
+}
+
 export function MissionClient() {
-  const { sessions, now, daily, mode, isDemo, alive, setMode, project } = useLive();
+  const { sessions, totalSessions, now, daily, mode, isDemo, alive, graceOver, setMode, project } =
+    useLive();
+  const { config, save } = useConfig();
   const today = daily[daily.length - 1];
   const live = sessions.filter((s) => s.status === "live");
+
+  // ---- first run ----
+  // Until onboarded, this page never shows demo data: a brand-new user either
+  // gets the welcome screen (real sessions found on disk) or the empty state.
+  if (!config) return null; // config GET is a local round-trip — a frame or two
+  if (!config.onboarded) {
+    if (!alive && !graceOver) return null; // let live-detection settle (≤3s)
+    const real = isDemo ? [] : sessions;
+    if (real.length === 0)
+      return (
+        <MissionEmpty
+          onDemo={() => {
+            save({ onboarded: true });
+            setMode("mock");
+          }}
+        />
+      );
+    return <Welcome sessions={real} total={totalSessions} onDone={() => save({ onboarded: true })} />;
+  }
+
+  // recording, but every recorded session was pruned or deleted
+  if (!isDemo && mode === "live" && sessions.length === 0) return <MissionEmpty />;
+
   const weekSessions = sessions.filter(
     (s) => s.startedAt > now - 7 * 24 * 3_600_000 && s.status !== "queued"
   );

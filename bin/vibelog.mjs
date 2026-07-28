@@ -81,6 +81,93 @@ function metaFor(cwd) {
 // The project the dashboard header shows (the dir vibelog was started in).
 let CURRENT_PROJECT = null;
 
+// ---------- config (~/.vibelog/config.json) ----------
+//
+// Shared with the dashboard: the settings page writes this file via
+// /api/config and the collector re-reads it every tick, so a toggle takes
+// effect within ~2s without restarting anything. Defaults live in
+// config.defaults.json (one source for CLI and dashboard).
+
+const CONFIG_FILE = path.join(DIR, "config.json");
+const CONFIG_DEFAULTS = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(ROOT, "config.defaults.json"), "utf8"));
+  } catch {
+    // packaged file missing — same values, baked in
+    return {
+      onboarded: false,
+      tapeCalloutSeen: false,
+      retentionDays: 30,
+      redactSecrets: true,
+      capturePrompts: true,
+      captureOutputs: true,
+      captureToolArgs: true,
+      alertSessionUsd: 0,
+      alertDailyUsd: 0,
+      weeklyDigest: true,
+      deletedBefore: 0,
+    };
+  }
+})();
+let CFG = { ...CONFIG_DEFAULTS };
+let cfgStamp = -1;
+// Reload when config.json changed; returns true when it did — the parse cache
+// must flush then, since capture/redaction settings bake into parsed sessions.
+function loadConfig() {
+  let stamp = 0;
+  try {
+    stamp = fs.statSync(CONFIG_FILE).mtimeMs;
+  } catch {}
+  if (stamp === cfgStamp) return false;
+  cfgStamp = stamp;
+  try {
+    CFG = { ...CONFIG_DEFAULTS, ...JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")) };
+  } catch {
+    CFG = { ...CONFIG_DEFAULTS };
+  }
+  return true;
+}
+
+// ---------- secret redaction ----------
+//
+// Values from the .env files in a session's cwd never reach state.json: every
+// prompt/output/label is scrubbed before the session is cached. Read once per
+// cwd per run (same lifecycle as metaCache).
+
+const ENV_FILES = [".env", ".env.local", ".env.production"];
+const secretCache = new Map(); // cwd -> [values]
+function secretsFor(cwd) {
+  if (!cwd) return [];
+  if (!secretCache.has(cwd)) {
+    const vals = [];
+    for (const f of ENV_FILES) {
+      let text;
+      try {
+        text = fs.readFileSync(path.join(cwd, f), "utf8");
+      } catch {
+        continue; // no such env file — skip silently
+      }
+      for (const line of text.split("\n")) {
+        const m = line.match(/^\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_.]*\s*=\s*(.*)$/);
+        if (!m) continue;
+        const v = m[1].trim().replace(/^(["'])(.*)\1$/, "$2");
+        // ponytail: values under 6 chars ("true", "3000") would shred normal
+        // prose; real secrets are longer. Raise if a short token ever matters.
+        if (v.length >= 6) vals.push(v);
+      }
+    }
+    secretCache.set(cwd, vals);
+  }
+  return secretCache.get(cwd);
+}
+
+// split/join, not regex — secret values are not patterns
+function redactText(text, secrets) {
+  if (!text) return text;
+  for (const v of secrets) if (text.includes(v)) text = text.split(v).join("[REDACTED]");
+  return text;
+}
+
 // ---------- args ----------
 
 const argv = process.argv.slice(2);
@@ -414,7 +501,10 @@ function startMock() {
 
 const PROJECTS = process.env.VIBELOG_PROJECTS || path.join(HOME, ".claude", "projects");
 const LIVE_MS = 120_000; // no writes for 2 min → session considered finished
-const MAX_AGE = 30 * 864e5; // transcripts older than 30 days are not read at all
+// Retention (Settings) drives how far back transcripts are read AND how long
+// sessions stay in state.json — one number, both directions. 0 = forever,
+// which in practice means a 10-year window rather than an unbounded scan.
+const retentionMs = () => (CFG.retentionDays || 3650) * 864e5;
 // Newest N sessions are sent to the dashboard. The dashboard is told the true
 // total alongside, so the cap is stated rather than hidden.
 const MAX_SESSIONS = 200;
@@ -504,8 +594,14 @@ function parseTranscript(file, mtimeMs, parentId) {
         } else if (p.type === "text" && p.text && !/^<|^Caveat:/.test(p.text.trim())) {
           // first human turn only — titleFrom already decides what to do when
           // that turn is a system prompt, so a later one must not override it
-          if (!title) title = titleFrom(p.text.trim(), cwd);
-          events.push({ at, kind: "prompt", label: "Task", detail: trunc(p.text.trim(), 280) });
+          if (!title && CFG.capturePrompts) title = titleFrom(p.text.trim(), cwd);
+          events.push({
+            at,
+            kind: "prompt",
+            label: "Task",
+            // capture off -> the event still marks the tape, its text does not land on disk
+            detail: CFG.capturePrompts ? trunc(p.text.trim(), 280) : "",
+          });
         }
       }
     } else if (e.type === "assistant") {
@@ -526,11 +622,22 @@ function parseTranscript(file, mtimeMs, parentId) {
           const inp = p.input ?? {};
           const target = inp.file_path ?? inp.notebook_path ?? inp.pattern ?? inp.command ?? inp.url ?? "";
           if (inp.file_path || inp.notebook_path) files.add(inp.file_path ?? inp.notebook_path);
-          const ev = { at, kind: "tool", label: (p.name + " " + trunc(String(target), 48)).trim() };
+          const ev = {
+            at,
+            kind: "tool",
+            // capture off -> tool name only, no paths/commands/arguments
+            label: CFG.captureToolArgs ? (p.name + " " + trunc(String(target), 48)).trim() : p.name,
+          };
           events.push(ev);
           pending.set(p.id, { event: ev, ts });
         } else if (p.type === "text" && p.text?.trim()) {
-          events.push({ at, kind: "output", label: "Assistant", detail: trunc(p.text.trim(), 280), tokens: u?.output_tokens });
+          events.push({
+            at,
+            kind: "output",
+            label: "Assistant",
+            detail: CFG.captureOutputs ? trunc(p.text.trim(), 280) : "",
+            tokens: u?.output_tokens,
+          });
         } else if (p.type === "thinking") {
           events.push({ at, kind: "thinking", label: "Reasoning" });
         }
@@ -539,6 +646,20 @@ function parseTranscript(file, mtimeMs, parentId) {
   }
 
   if (!model || !firstTs) return null; // empty or non-conversation file
+
+  // scrub .env values from everything that will land on disk (default ON)
+  if (CFG.redactSecrets) {
+    const secrets = secretsFor(cwd);
+    if (secrets.length) {
+      title = redactText(title, secrets);
+      summary = redactText(summary, secrets);
+      for (const e of events) {
+        e.label = redactText(e.label, secrets);
+        if (e.detail) e.detail = redactText(e.detail, secrets);
+      }
+    }
+  }
+
   const live = mtimeMs > Date.now() - LIVE_MS;
   // Clean completion = the last turn was the assistant ending normally. Anything
   // else on a finished session (max_tokens, interrupt, API error, or a run that
@@ -622,6 +743,191 @@ function collectTranscripts(dir, parentId, depth, out) {
   }
 }
 
+// ---------- spend alerts ----------
+//
+// Two thresholds from Settings, both off by default: any live session crossing
+// $X, and today's total crossing $X. Checked every tick; each fires once (per
+// session / per day) — tracked in memory, so a collector restart may re-notify
+// for a session that is still over its threshold.
+
+const firedAlerts = new Set(); // session ids already notified
+let dailyAlertDay = ""; // toDateString of the last daily alert
+
+const fmtMoney = (v) => "$" + (v >= 1 ? v.toFixed(2) : v.toFixed(4));
+const fmtElapsed = (sec) =>
+  sec < 60
+    ? `${sec}s`
+    : sec < 3600
+      ? `${Math.floor(sec / 60)}m`
+      : `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`;
+
+function openDashboard() {
+  const url = `http://localhost:${PORT}/mission`;
+  const [cmd, args] =
+    process.platform === "win32"
+      ? ["cmd", ["/c", "start", "", url]]
+      : process.platform === "darwin"
+        ? ["open", [url]]
+        : ["xdg-open", [url]];
+  try {
+    spawn(cmd, args, { detached: true, stdio: "ignore" }).unref();
+  } catch {}
+}
+
+let notifierMod; // lazy — a broken optional binary must not take the collector down
+async function notifyDesktop(message, fallback) {
+  try {
+    notifierMod ??= (await import("node-notifier")).default;
+    notifierMod.notify({ title: "VibeLog ●", message, wait: true }, (err, response) => {
+      if (err) console.log(`⚠ vibelog: ${fallback}`);
+      else if (/activate|click/i.test(String(response))) openDashboard();
+    });
+  } catch {
+    console.log(`⚠ vibelog: ${fallback}`);
+  }
+}
+
+function checkAlerts(sessions, now) {
+  if (CFG.alertSessionUsd > 0)
+    for (const s of sessions) {
+      // live sessions only: firing for weeks-old history on startup is spam
+      if (s.status !== "live" || s.costUsd < CFG.alertSessionUsd || firedAlerts.has(s.id))
+        continue;
+      firedAlerts.add(s.id);
+      notifyDesktop(
+        `${s.title} just crossed $${CFG.alertSessionUsd} · ${fmtMoney(s.costUsd)} so far · ${s.model} · ${fmtElapsed(s.durationSec)}`,
+        `${s.title} crossed $${CFG.alertSessionUsd}`
+      );
+    }
+  if (CFG.alertDailyUsd > 0) {
+    const day = new Date(now).toDateString();
+    const dayStart = new Date(day).getTime();
+    const today = sessions.filter((s) => s.startedAt >= dayStart && s.status !== "queued");
+    const total = today.reduce((a, s) => a + s.costUsd, 0);
+    if (total >= CFG.alertDailyUsd && dailyAlertDay !== day) {
+      dailyAlertDay = day;
+      notifyDesktop(
+        `Daily spend crossed $${CFG.alertDailyUsd} · ${fmtMoney(total)} today across ${today.length} sessions`,
+        `daily spend crossed $${CFG.alertDailyUsd}`
+      );
+    }
+  }
+}
+
+// ---------- weekly digest ----------
+//
+// Monday mornings the collector writes a markdown report of the previous week
+// to ~/.vibelog/digests/YYYY-WW.md (ISO week of the Monday it was generated).
+// Checked on the first tick and hourly after that; existence of the file is
+// the "already generated this week" marker. Off via Settings → weeklyDigest.
+
+function isoWeek(d) {
+  // ISO-8601: the week's Thursday decides which year the week belongs to
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const yearStart = Date.UTC(t.getUTCFullYear(), 0, 1);
+  return { year: t.getUTCFullYear(), week: Math.ceil(((t - yearStart) / 864e5 + 1) / 7) };
+}
+
+function buildDigest(sessions, weekStart) {
+  const dur = (s) => s.activeSec ?? s.durationSec;
+  const money = (v) => "$" + (v >= 100 ? Math.round(v) : v.toFixed(2));
+  const toks = (v) => (v >= 1e9 ? (v / 1e9).toFixed(1) + "B" : v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? (v / 1e3).toFixed(1) + "k" : String(v));
+  const fin = sessions.filter((s) => s.status === "completed" || s.status === "failed");
+  const failed = fin.filter((s) => s.status === "failed").length;
+  const cost = sessions.reduce((a, s) => a + s.costUsd, 0);
+  const tokens = sessions.reduce((a, s) => a + s.tokensIn + s.tokensOut, 0);
+  const avgSec = sessions.length
+    ? Math.round(sessions.reduce((a, s) => a + dur(s), 0) / sessions.length)
+    : 0;
+
+  const byModel = new Map();
+  for (const s of sessions) {
+    const m = byModel.get(s.model) ?? { n: 0, cost: 0 };
+    m.n++;
+    m.cost += s.costUsd;
+    byModel.set(s.model, m);
+  }
+  const byProject = new Map();
+  for (const s of sessions) {
+    const key = s.projectName || s.gitRepo || "Untracked";
+    const p = byProject.get(key) ?? { n: 0, cost: 0, branches: new Set() };
+    p.n++;
+    p.cost += s.costUsd;
+    if (s.gitBranch && s.gitBranch !== "no-branch") p.branches.add(s.gitBranch);
+    byProject.set(key, p);
+  }
+  const branchLabel = (b) =>
+    b.size === 0 ? "—" : [...b][0] + (b.size > 1 ? ` +${b.size - 1}` : "");
+  const top = (key) => [...sessions].sort((a, b) => key(b) - key(a)).slice(0, 3);
+
+  const lines = [
+    `# VibeLog — Week of ${new Date(weekStart).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`,
+    "",
+    "## Summary",
+    `Sessions: ${sessions.length} · Tokens: ${toks(tokens)} · Cost: ${money(cost)} (est.)`,
+    `Failure rate: ${fin.length ? ((failed / fin.length) * 100).toFixed(1) : "0.0"}% · Avg session: ${money(sessions.length ? cost / sessions.length : 0)} · ${Math.round(avgSec / 60)}m`,
+    "",
+    "## By model",
+    "| Model | Sessions | Cost | Avg/session |",
+    "|---|---|---|---|",
+    ...[...byModel.entries()]
+      .sort((a, b) => b[1].cost - a[1].cost)
+      .map(([m, v]) => `| ${m} | ${v.n} | ${money(v.cost)} | ${money(v.cost / v.n)} |`),
+    "",
+    "## By project",
+    "| Project | Sessions | Cost | Branch |",
+    "|---|---|---|---|",
+    ...[...byProject.entries()]
+      .sort((a, b) => b[1].cost - a[1].cost)
+      .map(([p, v]) => `| ${p} | ${v.n} | ${money(v.cost)} | ${branchLabel(v.branches)} |`),
+    "",
+    "## Longest sessions",
+    ...top(dur).map(
+      (s, i) => `${i + 1}. ${s.title} — ${fmtElapsed(dur(s))} · ${money(s.costUsd)} · ${s.model}`
+    ),
+    "",
+    "## Most expensive",
+    ...top((s) => s.costUsd).map(
+      (s, i) => `${i + 1}. ${s.title} — ${money(s.costUsd)} · ${fmtElapsed(dur(s))} · ${s.model}`
+    ),
+    "",
+    "## Daily breakdown",
+    "| Day | Sessions | Cost |",
+    "|---|---|---|",
+  ];
+  for (let d = 0; d < 7; d++) {
+    const start = weekStart + d * 864e5;
+    const inDay = sessions.filter((s) => s.startedAt >= start && s.startedAt < start + 864e5);
+    lines.push(
+      `| ${new Date(start).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} | ${inDay.length} | ${money(inDay.reduce((a, s) => a + s.costUsd, 0))} |`
+    );
+  }
+  return lines.join("\n") + "\n";
+}
+
+let lastDigestCheck = 0;
+function maybeDigest(sessions, now) {
+  if (!CFG.weeklyDigest || now - lastDigestCheck < 3_600_000) return;
+  lastDigestCheck = now; // hourly, and on the first tick after start
+  const today = new Date(now);
+  if (today.getDay() !== 1) return; // Mondays only
+  const { year, week } = isoWeek(today);
+  const name = `${year}-W${String(week).padStart(2, "0")}.md`;
+  const file = path.join(DIR, "digests", name);
+  if (fs.existsSync(file)) return; // this week's digest already exists
+  const monday = new Date(today.toDateString()).getTime();
+  const weekStart = monday - 7 * 864e5;
+  const inWeek = sessions.filter(
+    (s) => s.startedAt >= weekStart && s.startedAt < monday && s.status !== "queued"
+  );
+  if (!inWeek.length) return; // nothing recorded last week — skip, try again next Monday
+  fs.mkdirSync(path.join(DIR, "digests"), { recursive: true });
+  fs.writeFileSync(file, buildDigest(inWeek, weekStart));
+  console.log(`vibelog: weekly digest → ~/.vibelog/digests/${name}`);
+}
+
 // ---------- team mode ----------
 //
 // One machine runs `vibelog start --host`: its dashboard binds to the LAN and
@@ -699,9 +1005,17 @@ async function pushToHost(sessions, totalSessions) {
 function startReal() {
   const cache = new Map(); // file -> { mtimeMs, session }
   let lastRemoteStamp = 0;
+  let lastAllLen = -1; // so retention pruning alone still triggers a state write
   const tick = () => {
     let changed = false;
     const now = Date.now();
+    if (loadConfig()) {
+      // settings changed — reparse everything under the new capture/redaction
+      // rules; secrets re-read too in case a .env changed alongside
+      cache.clear();
+      secretCache.clear();
+      changed = true;
+    }
     let files = [];
     try {
       for (const proj of fs.readdirSync(PROJECTS, { withFileTypes: true }))
@@ -717,7 +1031,10 @@ function startReal() {
       } catch {
         continue;
       }
-      if (st.mtimeMs < now - MAX_AGE) continue;
+      if (st.mtimeMs < now - retentionMs()) continue;
+      // "Delete all recordings" stamps deletedBefore — transcripts untouched
+      // since then stay deleted instead of being re-derived next tick
+      if (st.mtimeMs <= CFG.deletedBefore) continue;
       const c = cache.get(file);
       const isLive = st.mtimeMs > now - LIVE_MS;
       if (c && c.mtimeMs === st.mtimeMs && (c.session?.status === "live") === isLive) continue;
@@ -759,15 +1076,24 @@ function startReal() {
       lastRemoteStamp = remote.stamp;
       changed = true;
     }
-    const all = [...tops.values(), ...orphans, ...remote.sessions].sort(
-      (a, b) => b.startedAt - a.startedAt
-    );
+    // retention prunes by start time on every tick — covers cached parses and
+    // remote sessions that have since aged past the cutoff
+    const cutoff = now - retentionMs();
+    const all = [...tops.values(), ...orphans, ...remote.sessions]
+      .filter((s) => s.startedAt >= cutoff)
+      .sort((a, b) => b.startedAt - a.startedAt);
+    if (all.length !== lastAllLen) {
+      lastAllLen = all.length;
+      changed = true;
+    }
     const sessions = all.slice(0, MAX_SESSIONS);
     const anyLive = sessions.some((s) => s.status === "live");
     if (anyLive)
       for (const s of sessions)
         if (s.status === "live" && s.machine === MACHINE)
           s.durationSec = Math.max(1, Math.round((now - s.startedAt) / 1000));
+    checkAlerts(all, now);
+    maybeDigest(all, now);
     if (CONNECT && (changed || anyLive))
       pushToHost(sessions.filter((s) => s.machine === MACHINE), all.length);
     if (changed || anyLive) writeState(sessions, "claude-code", all.length);

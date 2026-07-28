@@ -49,10 +49,26 @@ let perSession = new Map<string, string>(); // id -> serialized session, for dif
 async function poll() {
   let mtime = 0;
   let diffText = "";
+  let st;
   try {
-    const st = await fs.stat(STATE);
-    mtime = st.mtimeMs;
-    if (st.mtimeMs !== lastMtime) {
+    st = await fs.stat(STATE);
+  } catch {
+    // State file gone ("Delete all recordings") — drop the cached snapshot so
+    // new clients don't resurrect it, and hand connected ones an empty one.
+    // Only a missing FILE clears state; a torn read below never does.
+    if (lastText) {
+      lastMtime = 0;
+      lastText = "";
+      perSession = new Map();
+      snapshotText = JSON.stringify({ now: Date.now(), source: "claude-code", sessions: [], totalSessions: 0 });
+      for (const sub of subs) {
+        sub.hasBase = true;
+        sub.send("snapshot", snapshotText);
+      }
+    }
+  }
+  try {
+    if (st && st.mtimeMs !== lastMtime) {
       lastMtime = st.mtimeMs;
       const text = await fs.readFile(STATE, "utf8");
       // the heartbeat touch bumps mtime without changing content — skip the
@@ -83,8 +99,9 @@ async function poll() {
       }
     }
   } catch {
-    // no state file yet (hb: 0 tells the client) or a half-written one
+    // half-written state file — retry next tick
   }
+  if (st) mtime = st.mtimeMs;
   for (const sub of subs) {
     if (!sub.hasBase && snapshotText) {
       sub.hasBase = true;

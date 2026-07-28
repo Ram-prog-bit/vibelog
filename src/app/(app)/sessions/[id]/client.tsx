@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { type SessionEvent } from "@/lib/data";
 import { useLive } from "@/lib/live";
+import { useConfig } from "@/lib/config";
 import { fmtUsd6, fmtTokens, fmtDuration, offsetClock, timeAgo } from "@/lib/format";
 import { Card, Stat, StatusLabel, TapeReel } from "@/components/ui";
 import { ExportButton } from "@/components/export";
@@ -91,6 +92,13 @@ export function SessionClient() {
 
 function SessionView({ id }: { id: string }) {
   const { sessions, now } = useLive();
+  const { config, save } = useConfig();
+  // one-time hint that the tape is a scrubber; goes away on click — on the
+  // note itself or on the tape (either way, the point has landed)
+  const showCallout = !!config && config.onboarded && !config.tapeCalloutSeen;
+  const dismissCallout = () => {
+    if (showCallout) save({ tapeCalloutSeen: true });
+  };
   // live ids only exist once the first SSE frame lands — give it a beat
   // before declaring the session missing instead of hard-404ing
   const [waited, setWaited] = useState(false);
@@ -105,6 +113,7 @@ function SessionView({ id }: { id: string }) {
   const rowRefs = useRef<(HTMLLIElement | null)[]>([]);
   // Tape click drives the transcript; transcript click only moves the playhead.
   const selectFromTape = (i: number) => {
+    dismissCallout();
     setSelected(i);
     rowRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
@@ -159,6 +168,20 @@ function SessionView({ id }: { id: string }) {
       </div>
 
       <Card className="p-5">
+        {showCallout && (
+          <button
+            onClick={dismissCallout}
+            className="mb-3 flex w-full items-baseline justify-between gap-3 text-left font-mono text-[11px] text-ink-2 transition-colors hover:text-ink"
+          >
+            <span>
+              <span className="text-rec">●</span> This is your tape — click any point to jump to
+              that moment
+            </span>
+            <span aria-label="Dismiss" className="text-ink-3">
+              ×
+            </span>
+          </button>
+        )}
         <Tape
           events={s.events}
           durationSec={s.durationSec}

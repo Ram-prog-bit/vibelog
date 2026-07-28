@@ -121,6 +121,50 @@ export function Card({
   );
 }
 
+// The house empty state: typography only, serif italic headline, muted subtext.
+// `tape` draws a flat recorder strip above it — no spikes, ready and waiting.
+export function EmptyState({
+  title,
+  sub,
+  code,
+  tape = false,
+  className = "",
+}: {
+  title: string;
+  sub: string;
+  code?: string;
+  tape?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={`flex flex-col items-center py-20 text-center ${className}`}>
+      {tape && (
+        <svg viewBox="0 0 720 40" className="mb-10 w-full max-w-lg" aria-hidden>
+          {Array.from({ length: 25 }, (_, i) => (
+            <line
+              key={i}
+              x1={6 + (i / 24) * 708}
+              x2={6 + (i / 24) * 708}
+              y1={33}
+              y2={36}
+              stroke="var(--color-line-2)"
+              strokeWidth={1}
+            />
+          ))}
+          <line x1={0} x2={720} y1={28} y2={28} stroke="var(--color-line-2)" strokeWidth={1} />
+        </svg>
+      )}
+      <p className="font-serif text-2xl italic tracking-tight">{title}</p>
+      <p className="mt-2 max-w-md text-sm leading-relaxed text-ink-2">{sub}</p>
+      {code && (
+        <code className="mt-6 rounded-md bg-code-bg px-3 py-1.5 font-mono text-xs text-code-fg">
+          {code}
+        </code>
+      )}
+    </div>
+  );
+}
+
 export function Kbd({ children }: { children: React.ReactNode }) {
   return (
     <kbd className="rounded border border-line-2 bg-wash px-1.5 py-0.5 font-mono text-[10px] text-ink-2">

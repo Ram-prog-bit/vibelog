@@ -11,7 +11,7 @@ import {
 } from "@/lib/data";
 import { useLive } from "@/lib/live";
 import { fmtUsd, fmtUsd6, fmtTokens, fmtPct } from "@/lib/format";
-import { PageHeader, Stat, Card, DemoBanner } from "@/components/ui";
+import { PageHeader, Stat, Card, DemoBanner, EmptyState } from "@/components/ui";
 import { BarChart, Sparkline, LatencyRanges } from "@/components/charts";
 
 const fmtSecs = (s: number) => (s >= 10 ? s.toFixed(1) : s.toFixed(2)) + "s";
@@ -22,6 +22,22 @@ export function AnalyticsClient() {
   const toolLatency = isLive ? computeToolLatency(sessions) : TOOL_LATENCY;
   const sum = isLive ? computeSummary(sessions, now) : MOCK_SUMMARY;
   const maxModel = Math.max(1e-9, ...modelSplit.map((m) => m.costUsd));
+
+  // recording, nothing recorded yet — charts with all-zero axes read as broken
+  if (isLive && sessions.length === 0)
+    return (
+      <div className="space-y-8">
+        <PageHeader
+          title="Analytics"
+          sub="Cost and performance across every agent on this machine"
+        />
+        <EmptyState
+          title="No data yet."
+          sub="Analytics appear after your first session completes."
+          className="min-h-[50vh] justify-center"
+        />
+      </div>
+    );
 
   return (
     <div className="space-y-8">
